@@ -1,0 +1,11 @@
+{
+  "model_save_path": "/path/where/model/will/be/saved/",
+  "image_path": "/home/y4tsu/Desktop/data/siim/dicom_train/",
+  "label_csv_path": "/home/y4tsu/Desktop/data/siim/train_seg_only.csv",
+  "mode": "lrf",
+  "num_epochs": 1,
+  "batch_size": 16,
+  "image_size": 1000,
+  "train_val_test_splits": [0.7, 0.15, 0.15],
+  "learning_rate": 3e-4
+}
