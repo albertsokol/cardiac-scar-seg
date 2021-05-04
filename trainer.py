@@ -4,17 +4,16 @@ from tensorflow.keras import callbacks
 from tensorflow.keras import optimizers
 import json
 
-import utils
 from callbacks import LearningRateFinder
 from generators import SegGenerator
 from losses import weighted_pixel_bce_loss, dice_loss, combined_dice_wpce_loss
 from metrics import dice_coefficient_wrapper
-from models import create_segmentation_model, unet_pp_pretrain_model
+from models import create_segmentation_model, unet_pp_pretrain_model, UNet3D
 
 
 class Trainer:
     """ Trainer class for training models. """
-    def __init__(self, model_save_path, image_path, label_csv_path, mode, num_epochs, batch_size, image_size,
+    def __init__(self, model_save_path, image_path, label_csv_path, mode, model, num_epochs, batch_size, image_size,
                  train_val_test_splits, learning_rate):
         """
         Initializer for Trainer.
@@ -29,6 +28,7 @@ class Trainer:
         self.mode = mode
 
         # Training parameters
+        self.model = model
         self.num_epochs = num_epochs
         self.batch_size = batch_size
         self.image_size = image_size
@@ -43,6 +43,8 @@ class Trainer:
 
     def train(self):
         """ Train the model. """
+        model = UNet3D((128, 128, 64)).create_model()
+        model.summary(line_length=160)
 
 
 if __name__ == '__main__':
