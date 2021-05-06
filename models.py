@@ -40,9 +40,7 @@ class SegModel:
 
 
 class UNet3D(SegModel):
-    # TODO: check implementation
-    # TODO: create plots
-    """ Implementation of UNet-3D as per the 2016 paper. """
+    """ Implementation of UNet-3D as per the 2016 paper: https://arxiv.org/pdf/1606.06650.pdf """
     def __init__(self, input_size, kernel_size=(3, 3, 3), conv3d_transpose_kernel_size=(2, 2, 2)):
         super().__init__(input_size, kernel_size, conv3d_transpose_kernel_size)
 

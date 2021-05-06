@@ -9,6 +9,7 @@ from generators import SegGenerator
 from losses import weighted_pixel_bce_loss, dice_loss, combined_dice_wpce_loss
 from metrics import dice_coefficient_wrapper
 from models import create_segmentation_model, unet_pp_pretrain_model, UNet3D
+from tensorflow.keras.utils import plot_model
 
 
 class Trainer:
@@ -44,6 +45,7 @@ class Trainer:
     def train(self):
         """ Train the model. """
         model = UNet3D((128, 128, 64)).create_model()
+        # plot_model(model, 'UNet3Dplot.png', show_shapes=True)
         model.summary(line_length=160)
 
 
