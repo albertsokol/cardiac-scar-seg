@@ -2,48 +2,59 @@ import matplotlib.pyplot as plt
 import pandas as pd
 from tensorflow.keras import callbacks
 from tensorflow.keras import optimizers
+import json
 
-import utils
 from callbacks import LearningRateFinder
 from generators import SegGenerator
 from losses import weighted_pixel_bce_loss, dice_loss, combined_dice_wpce_loss
 from metrics import dice_coefficient_wrapper
-from models import create_segmentation_model, unet_pp_pretrain_model
+from models import create_segmentation_model, unet_pp_pretrain_model, UNet3D
+from tensorflow.keras.utils import plot_model
+
+
+class Trainer:
+    """ Trainer class for training models. """
+    def __init__(self, model_save_path, image_path, label_csv_path, mode, model, num_epochs, batch_size, image_size,
+                 train_val_test_splits, learning_rate):
+        """
+        Initializer for Trainer.
+        """
+        # File path parameters
+        self.model_save_path = model_save_path
+        self.image_path = image_path
+        self.label_csv_path = label_csv_path
+
+        # Mode: "lrf" for learning rate finder, "train" for normal model training
+        assert mode == 'lrf' or mode == 'train', f'mode \'{mode}\' does not exist, please use \'lrf\' or \'train\''
+        self.mode = mode
+
+        # Training parameters
+        self.model = model
+        self.num_epochs = num_epochs
+        self.batch_size = batch_size
+        self.image_size = image_size
+        self.train_val_test_splits = train_val_test_splits
+        self.lr = learning_rate
+
+        # TODO: need to write a function that will automatically calculate this over the training set on initialisation
+        self.beta_pixel_weighting = 0.010753784
+
+    def calculate_beta(self):
+        """ Calculate beta pixel weighting for the loss functions. """
+
+    def train(self):
+        """ Train the model. """
+        model = UNet3D((128, 128, 64)).create_model()
+        # plot_model(model, 'UNet3Dplot.png', show_shapes=True)
+        model.summary(line_length=160)
+
 
 if __name__ == '__main__':
-    """
-    Train a segmentation model based on the UNet++ / UNet papers. 
-    Images classified as PT by classifier model will then be fed to this model during prediction. 
-    Model depth can be changed by modifying the 'l' parameter. 
-    """
+    with open('config.json', 'r') as r:
+        config = json.load(r)
 
-    import os
-    os.environ["CUDA_VISIBLE_DEVICES"] = "1"
-
-    # =================== ADJUST THESE PARAMETERS AS REQUIRED ===================
-
-    # Set the paths where to save trained model, and where to find training and validation data
-    save_path = '/path/where/model/will/be/saved/'
-    image_path = '/home/y4tsu/Desktop/data/siim/dicom_train/'
-    csv_path = '/home/y4tsu/Desktop/data/siim/train_seg_only.csv'
-    imgnet_pretrain_path = '/home/y4tsu/Desktop/models/l3_pretrained_unetpp_224_imgnet/variables/variables'
-
-    # Training parameters - read from config.ini file. Beta is the average % of PT pixels across training set only
-    BATCH_SIZE, RESIZE_TO, TRAIN_PROP = utils.read_config_file()
-    NUM_EPOCHS = 1
-    # TODO: need to write a function that will automatically calculate this over the training set on initialisation
-    beta_pixel_weighting = 0.010753784
-
-    # Choose mode as 'lrf' or 'train'; 'lrf' will draw graph for choosing learning rate. 'train' will use
-    # checkpoint callback, and will save best model to save_path
-    mode = 'lrf'
-
-    # If training, set the learning rate
-    lr = 3e-4
-
-    # ===========================================================================
-
-    assert mode == 'lrf' or mode == 'train', f'mode \'{mode}\' does not exist, please use \'lrf\' or \'train\''
+    trainer = Trainer(**config)
+    trainer.train()
 
     # Loading data and training constants
     overall_df = pd.read_csv(csv_path, index_col='ImageId')
