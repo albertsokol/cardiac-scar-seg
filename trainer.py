@@ -15,7 +15,7 @@ from tensorflow.keras.utils import plot_model
 class Trainer:
     """ Trainer class for training models. """
     def __init__(self, model_save_path, image_path, label_csv_path, mode, model, num_epochs, batch_size, image_size,
-                 train_val_test_splits, learning_rate):
+                 train_val_test_splits, learning_rate, labels):
         """
         Initializer for Trainer.
         """
@@ -36,6 +36,9 @@ class Trainer:
         self.train_val_test_splits = train_val_test_splits
         self.lr = learning_rate
 
+        # Labels
+        self.labels = labels
+
         # TODO: need to write a function that will automatically calculate this over the training set on initialisation
         self.beta_pixel_weighting = 0.010753784
 
@@ -44,7 +47,7 @@ class Trainer:
 
     def train(self):
         """ Train the model. """
-        model = UNet3D((128, 128, 64)).create_model()
+        model = UNet3D(input_size=(128, 128, 64), output_length=len(self.labels)).create_model()
         # plot_model(model, 'UNet3Dplot.png', show_shapes=True)
         model.summary(line_length=160)
 

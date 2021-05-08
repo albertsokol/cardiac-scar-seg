@@ -1,10 +1,49 @@
 import tensorflow.keras.backend as K
 
 
-def clip(z):
-    """ Clip all values in a tensor to prevent divide by 0 errors. """
-    z = K.clip(z, 1e-7, 1)
-    return z
+class Loss:
+    """ Generic methods for all loss functions. """
+    def __init__(self, batch_size, image_size):
+        self.batch_size = batch_size
+        self.num_vox = image_size[0] * image_size[1] * image_size[2]
+
+    @staticmethod
+    def clip(z):
+        """ Clip all values in a tensor to prevent divide by 0 errors. """
+        z = K.clip(z, 1e-7, 1)
+        return z
+
+
+class SoftmaxLoss(Loss):
+    """ Basic non-weighted softmax loss. """
+    def __init__(self, batch_size, image_size):
+        super().__init__(batch_size, image_size)
+
+    def __call__(self, *args, **kwargs):
+        y_true = args[0]
+        y_pred = args[1]
+
+        loss = - K.sum(y_true * K.log(self.clip(y_pred)))
+
+        # Return loss normalized by batch size and image size for stable LRs across different input sizes
+        return loss / self.num_vox / self.batch_size
+
+
+class WeightedSoftmaxLoss(Loss):
+    """ Categorical cross-entropy loss, which is used in the original UNet-3D paper. """
+    def __init__(self, batch_size, image_size):
+        super().__init__(batch_size, image_size)
+
+    def __call__(self, *args, **kwargs):
+        """ This should allow global variable access to beta or batch_size without requiring a wrapper function. """
+        y_true = args[0]
+        y_pred = args[1]
+
+        # vox_wt should be a len(labels) length vector of voxel weights for each label
+        loss = - K.sum(self.vox_wt * y_true * K.log(self.clip(y_pred)))
+
+        # Return loss normalized by batch size and image size for stable LRs across different input sizes
+        return loss / self.num_vox / self.batch_size
 
 
 def weighted_pixel_bce_loss(beta, batch_size):
