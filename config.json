@@ -8,5 +8,12 @@
   "batch_size": 16,
   "image_size": 1000,
   "train_val_test_splits": [0.7, 0.15, 0.15],
-  "learning_rate": 3e-4
+  "learning_rate": 3e-4,
+  "labels": {
+    "0": "background",
+    "1": "right ventricle",
+    "2": "left ventricle myocardium",
+    "3": "left ventricle lumen",
+    "4": "scar"
+  }
 }

@@ -4,6 +4,30 @@ from PIL import Image
 from pydicom import dcmread
 from tensorflow.keras.utils import Sequence
 
+from readers import NIIReader
+from augmenter import Augmenter
+
+
+class NIIGenerator(Sequence):
+    """ Class for the .nii image generator. """
+    def __init__(self):
+        pass
+
+    def __len__(self):
+        # TODO: implement correctly
+        # Number of gradient descent steps that will be taken per epoch
+        return len(self.image_filenames) // self.batch_size
+
+    def __getitem__(self, index):
+        # TODO: implement correctly
+        # Create a list of batch_size numerical indices
+        indices = self.index[self.batch_size * index:self.batch_size * (index + 1)]
+        if indices.size == 0:
+            raise IndexError('Index not within possible range (0 to number of training steps)')
+        # Generate the data
+        x, y = self.__get_data(indices)
+        return x, y
+
 
 class SegGenerator(Sequence):
     """

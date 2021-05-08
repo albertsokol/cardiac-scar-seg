@@ -6,11 +6,18 @@ from tensorflow.keras import models
 # TODO: Implement these models ! 
 class SegModel:
     """ Class implementing generic and common segmentation model methods. """
-    def __init__(self, input_size, kernel_size, conv3d_transpose_kernel_size):
+    def __init__(self, input_size, kernel_size, conv3d_transpose_kernel_size, output_length):
         # TODO: assert this is an evenly divisible tuple of 3 elements
         self.input_size = input_size
         self.kernel_size = kernel_size
         self.conv3d_transpose_kernel_size = conv3d_transpose_kernel_size
+        self.output_length = output_length
+
+
+class UNet3D(SegModel):
+    """ Implementation of UNet-3D as per the 2016 paper: https://arxiv.org/pdf/1606.06650.pdf """
+    def __init__(self, input_size, output_length, kernel_size=(3, 3, 3), conv3d_transpose_kernel_size=(2, 2, 2)):
+        super().__init__(input_size, kernel_size, conv3d_transpose_kernel_size, output_length)
 
     def down_conv_block(self, m, filters_a, filters_b):
         """ 3D down-convolution block generic to all models? We'll see ... """
@@ -38,12 +45,6 @@ class SegModel:
 
         return m
 
-
-class UNet3D(SegModel):
-    """ Implementation of UNet-3D as per the 2016 paper: https://arxiv.org/pdf/1606.06650.pdf """
-    def __init__(self, input_size, kernel_size=(3, 3, 3), conv3d_transpose_kernel_size=(2, 2, 2)):
-        super().__init__(input_size, kernel_size, conv3d_transpose_kernel_size)
-
     def define_architecture(self, model_input):
         """ Build the UNet-3D model. """
         # Downsampling / encoding portion
@@ -64,7 +65,7 @@ class UNet3D(SegModel):
         uconv1 = self.up_conv_block(uconv2, conv1, 256, 128)
         uconv0 = self.up_conv_block(uconv1, conv0, 128, 64)
 
-        out = layers.Conv3D(1, (1, 1, 1), padding='same', activation='relu')(uconv0)
+        out = layers.Conv3D(self.output_length, (1, 1, 1), padding='same', activation='relu')(uconv0)
 
         return out
 
