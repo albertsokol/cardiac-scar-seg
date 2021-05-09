@@ -1,12 +1,12 @@
 {
   "model_save_path": "/path/where/model/will/be/saved/",
-  "image_path": "/home/y4tsu/Desktop/data/siim/dicom_train/",
-  "label_csv_path": "/home/y4tsu/Desktop/data/siim/train_seg_only.csv",
+  "image_path": "/home/y4tsu/Desktop/data/dummy/image",
+  "label_path": "/home/y4tsu/Desktop/data/dummy/label",
   "mode": "lrf",
   "model": "UNet3D",
   "num_epochs": 1,
-  "batch_size": 16,
-  "image_size": 1000,
+  "batch_size": 1,
+  "image_size": [192, 192, 192],
   "train_val_test_splits": [0.7, 0.15, 0.15],
   "learning_rate": 3e-4,
   "labels": {

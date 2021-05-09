@@ -1,20 +1,23 @@
 import matplotlib.pyplot as plt
 import pandas as pd
+import numpy as np
 from tensorflow.keras import callbacks
 from tensorflow.keras import optimizers
 import json
 
 from callbacks import LearningRateFinder
-from generators import SegGenerator
 from losses import weighted_pixel_bce_loss, dice_loss, combined_dice_wpce_loss
 from metrics import dice_coefficient_wrapper
 from models import create_segmentation_model, unet_pp_pretrain_model, UNet3D
 from tensorflow.keras.utils import plot_model
 
+from augmenter import Augmenter
+from generators import NIIGenerator
+
 
 class Trainer:
     """ Trainer class for training models. """
-    def __init__(self, model_save_path, image_path, label_csv_path, mode, model, num_epochs, batch_size, image_size,
+    def __init__(self, model_save_path, image_path, label_path, mode, model, num_epochs, batch_size, image_size,
                  train_val_test_splits, learning_rate, labels):
         """
         Initializer for Trainer.
@@ -22,7 +25,7 @@ class Trainer:
         # File path parameters
         self.model_save_path = model_save_path
         self.image_path = image_path
-        self.label_csv_path = label_csv_path
+        self.label_path = label_path
 
         # Mode: "lrf" for learning rate finder, "train" for normal model training
         assert mode == 'lrf' or mode == 'train', f'mode \'{mode}\' does not exist, please use \'lrf\' or \'train\''
@@ -36,14 +39,24 @@ class Trainer:
         self.train_val_test_splits = train_val_test_splits
         self.lr = learning_rate
 
+        # Set up generator and augmentation etc.
+        self.augmenter = Augmenter()
+        self.generator = NIIGenerator(image_path, label_path, batch_size, image_size, labels, augmenter=self.augmenter)
+
         # Labels
         self.labels = labels
+        self.label_weights = self.calculate_label_weights()
 
         # TODO: need to write a function that will automatically calculate this over the training set on initialisation
         self.beta_pixel_weighting = 0.010753784
+        for i in range(len(self.generator.image_fnames)):
+            self.generator.__getitem__(i)
+            print(i)
 
-    def calculate_beta(self):
-        """ Calculate beta pixel weighting for the loss functions. """
+    def calculate_label_weights(self):
+        """ Calculate beta pixel weighting and it's inverse as the label weights for weighted loss functions. """
+        labels = self.labels
+        return np.array([1, 2, 3, 4, 5])
 
     def train(self):
         """ Train the model. """

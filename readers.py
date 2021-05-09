@@ -163,29 +163,27 @@ class NIIReader(FileReader):
     def __init__(self):
         super().__init__()
 
-    def read(self, f):
-        img = nib.load(f, mmap=False)
-        print(img.shape)
-        return img
-
     @staticmethod
     def numpy(img):
         """ Return the image as a numpy array. """
         return img.get_fdata()
 
+    def read(self, f):
+        """ Load the image using nibabel and convert to numpy array. """
+        return self.numpy(nib.load(f, mmap=False))
+
 
 if __name__ == '__main__':
-    single = '/home/y4tsu/Desktop/data/mri/imagesTr/la_003.nii'
-    label = '/home/y4tsu/Desktop/data/mri/labelsTr/la_003.nii'
-    folder = '/home/y4tsu/Desktop/data/mri/imagesTr/'
+    single = '/home/y4tsu/Desktop/data/dummy/label/scrV001.nii'
+    # label = '/home/y4tsu/Desktop/data/mri/labelsTr/la_003.nii'
+    # folder = '/home/y4tsu/Desktop/data/mri/imagesTr/'
     reader = NIIReader()
 
     img = reader.read(single)
-    img = reader.numpy(img)
-    print(img.shape)
-    resized = reader.resize(img, dims=(160, 160, 65))
-    print(resized.shape)
-
+    # print(img.shape)
+    # resized = reader.resize(img, dims=(160, 160, 65))
+    # print(resized.shape)
+    #
     # chops = reader.chop(_img, chop_size=(160, 160, 65), overlap=False, logging=False)
     # print(len(chops))
 
@@ -196,7 +194,7 @@ if __name__ == '__main__':
     # plt.imshow(recombine, cmap='gray')
     # plt.show()
     reader.scroll_view(img)
-    reader.scroll_view(resized)
+    # reader.scroll_view(resized)
 
     # for x in os.listdir(folder):
     #     reader.read(folder + x)

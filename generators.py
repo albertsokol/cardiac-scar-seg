@@ -1,3 +1,5 @@
+import os
+
 import imgaug.augmenters as iaa
 import numpy as np
 from PIL import Image
@@ -5,28 +7,97 @@ from pydicom import dcmread
 from tensorflow.keras.utils import Sequence
 
 from readers import NIIReader
-from augmenter import Augmenter
 
 
 class NIIGenerator(Sequence):
     """ Class for the .nii image generator. """
-    def __init__(self):
-        pass
+    def __init__(self, image_path, label_path, batch_size, image_size, labels, shuffle=True, augmenter=None):
+        # Set up image filenames and indexing
+        self.reader = NIIReader()
+        self.augmenter = augmenter
+        self.image_path = image_path
+        self.label_path = label_path
+        self.image_fnames = [os.path.join(image_path, x) for x in sorted(os.listdir(image_path))]
+        self.label_fnames = [os.path.join(label_path, x) for x in sorted(os.listdir(label_path))]
+        assert len(self.image_fnames) == len(self.label_fnames), "Number of image files and label files did not match!"
+        self.index = np.arange(len(self.image_fnames))
+
+        # Model parameters
+        self.batch_size = batch_size
+        self.image_size = image_size
+        self.labels = labels
+
+        # Shuffle the data before starting if shuffling has been turned on
+        self.shuffle = shuffle
+        self.on_epoch_end()
+
+    def on_epoch_end(self):
+        # Optionally shuffle the data at the end of each epoch
+        if self.shuffle:
+            np.random.shuffle(self.index)
 
     def __len__(self):
-        # TODO: implement correctly
         # Number of gradient descent steps that will be taken per epoch
         return len(self.image_filenames) // self.batch_size
 
     def __getitem__(self, index):
-        # TODO: implement correctly
         # Create a list of batch_size numerical indices
         indices = self.index[self.batch_size * index:self.batch_size * (index + 1)]
         if indices.size == 0:
             raise IndexError('Index not within possible range (0 to number of training steps)')
         # Generate the data
-        x, y = self.__get_data(indices)
+        x, y = self.get_data(indices)
         return x, y
+
+    def get_data(self, batch_indices):
+        # Initialise empty arrays for the training data and labels
+        x = np.empty([self.batch_size, *self.image_size, 1], dtype=np.float32)
+        y = np.empty([self.batch_size, *self.image_size, len(self.labels)], dtype=np.float32)
+
+        print(x.shape)
+        print(y.shape)
+
+        # Get the training data
+        for i, index in enumerate(batch_indices):
+            x[i, :, :, :, :] = self.read_img_file(index)
+            y[i, :, :, :, :] = self.read_label_file(index)
+
+        # Apply data augmentation if option is turned on
+        # if self.augmenter:
+        #     x, y = self.__aug(x, y)
+
+        return x, y
+
+    def read_img_file(self, index):
+        """ Read the image file at the given index. """
+        curr_fname = self.image_fnames[index]
+        # Read the file
+        img = self.reader.read(curr_fname)
+        # Resize to the input shape of the model
+        if img.shape != self.image_size:
+            img = self.reader.resize(img, self.image_size)
+        # Add an extra dimension if required
+        if len(img.shape) != 4:
+            img = img[:, :, :, np.newaxis]
+        # Finally, normalize the image
+        return self.reader.normalize(img)
+
+    def read_label_file(self, index):
+        """ Read the label file at the given index. """
+        curr_fname = self.label_fnames[index]
+        # Read the file
+        img = self.reader.read(curr_fname)
+        print(img.shape)
+        # TODO: change order of this to be correct ...
+        # Add an extra dimension if required
+        if len(img.shape) != 4:
+            img = img[:, np.newaxis]
+        # Resize to the input shape of the model
+        if img.shape != self.image_size:
+            img = self.reader.resize(img, self.image_size)
+        # TODO: need to set this to the correct 5 channel vector of one hot encodings
+        print(img.shape)
+        return img
 
 
 class SegGenerator(Sequence):
