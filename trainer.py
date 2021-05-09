@@ -4,9 +4,10 @@ import numpy as np
 from tensorflow.keras import callbacks
 from tensorflow.keras import optimizers
 import json
+from tqdm import tqdm
 
 from callbacks import LearningRateFinder
-from losses import weighted_pixel_bce_loss, dice_loss, combined_dice_wpce_loss
+from losses import weighted_pixel_bce_loss, dice_loss, combined_dice_wpce_loss, SoftmaxLoss, WeightedSoftmaxLoss
 from metrics import dice_coefficient_wrapper
 from models import create_segmentation_model, unet_pp_pretrain_model, UNet3D
 from tensorflow.keras.utils import plot_model
@@ -18,7 +19,7 @@ from generators import NIIGenerator
 class Trainer:
     """ Trainer class for training models. """
     def __init__(self, model_save_path, image_path, label_path, mode, model, num_epochs, batch_size, image_size,
-                 train_val_test_splits, learning_rate, labels):
+                 train_val_test_splits, learning_rate, labels, loss_fn):
         """
         Initializer for Trainer.
         """
@@ -28,7 +29,7 @@ class Trainer:
         self.label_path = label_path
 
         # Mode: "lrf" for learning rate finder, "train" for normal model training
-        assert mode == 'lrf' or mode == 'train', f'mode \'{mode}\' does not exist, please use \'lrf\' or \'train\''
+        assert mode in ['lrf', 'train'], f'mode \'{mode}\' does not exist, please use \'lrf\' or \'train\''
         self.mode = mode
 
         # Training parameters
@@ -39,28 +40,45 @@ class Trainer:
         self.train_val_test_splits = train_val_test_splits
         self.lr = learning_rate
 
+        loss_dict = {
+            'softmax': SoftmaxLoss,
+            'weighted softmax': WeightedSoftmaxLoss
+        }
+        assert loss_fn in loss_dict, f'loss function {loss_fn}, not recognised, please pick one of: {loss_dict}'
+
         # Set up generator and augmentation etc.
         self.augmenter = Augmenter()
         self.generator = NIIGenerator(image_path, label_path, batch_size, image_size, labels, augmenter=self.augmenter)
 
         # Labels
         self.labels = labels
-        self.label_weights = self.calculate_label_weights()
-
-        # TODO: need to write a function that will automatically calculate this over the training set on initialisation
-        self.beta_pixel_weighting = 0.010753784
-        for i in range(len(self.generator.image_fnames)):
-            self.generator.__getitem__(i)
-            print(i)
+        if loss_fn == 'weighted softmax':
+            self.loss_fn = loss_dict[loss_fn](batch_size, image_size, self.calculate_label_weights())
+        else:
+            self.loss_fn = loss_dict[loss_fn](batch_size, image_size)
 
     def calculate_label_weights(self):
         """ Calculate beta pixel weighting and it's inverse as the label weights for weighted loss functions. """
-        labels = self.labels
-        return np.array([1, 2, 3, 4, 5])
+        sums = np.zeros(len(self.labels))
+        print(f'Calculating label weightings across {len(self.generator.image_fnames)} label images for use in loss'
+              f' function, may take a while ... ')
+        for i in tqdm(range(len(self.generator.image_fnames))):
+            _, label_img = self.generator.__getitem__(i)
+            # Get the number of labelled voxels of each class for each label image
+            sums += [label_img[..., j].sum() for j in range(0, len(self.labels))]
+            print(sums)
+        # Get the total number of voxels in the dataset to normalize the beta
+        total_voxels = np.prod(np.array([*self.image_size, len(self.generator.image_fnames)]))
+        beta = sums / total_voxels
+        print(total_voxels)
+        print(beta)
+        # Return weightings: 1 / beta
+        return 1. / beta
 
     def train(self):
         """ Train the model. """
-        model = UNet3D(input_size=(128, 128, 64), output_length=len(self.labels)).create_model()
+        model = UNet3D(input_size=self.image_size,
+                       output_length=len(self.labels)).create_model()
         # plot_model(model, 'UNet3Dplot.png', show_shapes=True)
         model.summary(line_length=160)
 

@@ -1,7 +1,7 @@
 import tensorflow.keras.backend as K
 
 
-class Loss:
+class __Loss:
     """ Generic methods for all loss functions. """
     def __init__(self, batch_size, image_size):
         self.batch_size = batch_size
@@ -14,14 +14,13 @@ class Loss:
         return z
 
 
-class SoftmaxLoss(Loss):
+class SoftmaxLoss(__Loss):
     """ Basic non-weighted softmax loss. """
     def __init__(self, batch_size, image_size):
         super().__init__(batch_size, image_size)
 
     def __call__(self, *args, **kwargs):
-        y_true = args[0]
-        y_pred = args[1]
+        y_true, y_pred = args[0], args[1]
 
         loss = - K.sum(y_true * K.log(self.clip(y_pred)))
 
@@ -29,18 +28,17 @@ class SoftmaxLoss(Loss):
         return loss / self.num_vox / self.batch_size
 
 
-class WeightedSoftmaxLoss(Loss):
+class WeightedSoftmaxLoss(__Loss):
     """ Categorical cross-entropy loss, which is used in the original UNet-3D paper. """
-    def __init__(self, batch_size, image_size):
+    def __init__(self, batch_size, image_size, label_weights):
         super().__init__(batch_size, image_size)
+        self.label_weights = label_weights
 
     def __call__(self, *args, **kwargs):
-        """ This should allow global variable access to beta or batch_size without requiring a wrapper function. """
-        y_true = args[0]
-        y_pred = args[1]
+        y_true, y_pred = args[0], args[1]
 
-        # vox_wt should be a len(labels) length vector of voxel weights for each label
-        loss = - K.sum(self.vox_wt * y_true * K.log(self.clip(y_pred)))
+        # label_weights is be a len(labels) length vector of voxel weights for each label
+        loss = - K.sum(self.label_weights * y_true * K.log(self.clip(y_pred)))
 
         # Return loss normalized by batch size and image size for stable LRs across different input sizes
         return loss / self.num_vox / self.batch_size
@@ -60,7 +58,6 @@ def weighted_pixel_bce_loss(beta, batch_size):
         # Find the number of total pixels in an image
         num_pix = K.int_shape(y_pred)[1] * K.int_shape(y_pred)[2]
         # Calculate the loss
-        # TODO: try with also weighting the other part; should be *1-beta for y=1 but *beta for y=0 to prevent over-punishing y=0
         bce = - ((px_wt * y_true * K.log(clip(y_pred))) + (1 - y_true) * K.log(clip(1 - y_pred)))
 
         # Sum and average the loss by the number of pixels and by the batch size

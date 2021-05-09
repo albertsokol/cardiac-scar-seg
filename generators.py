@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image
 from pydicom import dcmread
 from tensorflow.keras.utils import Sequence
+from tensorflow import one_hot
 
 from readers import NIIReader
 
@@ -52,7 +53,7 @@ class NIIGenerator(Sequence):
     def get_data(self, batch_indices):
         # Initialise empty arrays for the training data and labels
         x = np.empty([self.batch_size, *self.image_size, 1], dtype=np.float32)
-        y = np.empty([self.batch_size, *self.image_size, len(self.labels)], dtype=np.float32)
+        y = np.empty([self.batch_size, *self.image_size, len(self.labels)], dtype=np.int8)
 
         print(x.shape)
         print(y.shape)
@@ -71,15 +72,15 @@ class NIIGenerator(Sequence):
     def read_img_file(self, index):
         """ Read the image file at the given index. """
         curr_fname = self.image_fnames[index]
-        # Read the file
         img = self.reader.read(curr_fname)
+
         # Resize to the input shape of the model
         if img.shape != self.image_size:
             img = self.reader.resize(img, self.image_size)
-        # Add an extra dimension if required
+
         if len(img.shape) != 4:
             img = img[:, :, :, np.newaxis]
-        # Finally, normalize the image
+
         return self.reader.normalize(img)
 
     def read_label_file(self, index):
@@ -87,17 +88,13 @@ class NIIGenerator(Sequence):
         curr_fname = self.label_fnames[index]
         # Read the file
         img = self.reader.read(curr_fname)
-        print(img.shape)
-        # TODO: change order of this to be correct ...
-        # Add an extra dimension if required
-        if len(img.shape) != 4:
-            img = img[:, np.newaxis]
-        # Resize to the input shape of the model
+
+        # Resize to the input shape of the model without interpolation
         if img.shape != self.image_size:
-            img = self.reader.resize(img, self.image_size)
-        # TODO: need to set this to the correct 5 channel vector of one hot encodings
-        print(img.shape)
-        return img
+            img = self.reader.resize(img, self.image_size, interpolation_order=0)
+
+        # One hot encode the labels to create a new channel for each label and save as int8 to save space
+        return one_hot(img, len(self.labels), dtype=np.int8).numpy()
 
 
 class SegGenerator(Sequence):

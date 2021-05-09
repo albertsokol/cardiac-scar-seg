@@ -9,6 +9,7 @@
   "image_size": [192, 192, 192],
   "train_val_test_splits": [0.7, 0.15, 0.15],
   "learning_rate": 3e-4,
+  "loss_fn": "weighted softmax",
   "labels": {
     "0": "background",
     "1": "right ventricle",

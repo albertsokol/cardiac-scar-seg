@@ -135,13 +135,15 @@ class FileReader:
         return result
 
     @staticmethod
-    def resize(img, dims=None, magnify=None):
+    def resize(img, dims=None, magnify=None, interpolation_order=3):
         """
         Resize to the given proportions. Either dims or magnify can be given, but only one can be specified
         dims: len(3) tuple:
             the dimensions to resize the input image to
         magnify: len(3) tuple:
             the scaling factor to apply to the x, y and z axes
+        interpolation_order: int (0 - 5 incl.): the order of spline interpolation, i.e., 3 for cubic, 0 for nearest
+            neighbour
         """
         assert type(img) == np.ndarray, 'image must be a numpy array to use for scrolling.'
         if dims is None and magnify is None:
@@ -150,7 +152,7 @@ class FileReader:
             raise AttributeError("Both dims and magnify cannot be selected - please specify only one")
         if dims is not None:
             magnify = (dims[0] / img.shape[0], dims[1] / img.shape[1], dims[2] / img.shape[2])
-        return zoom(img, magnify)
+        return zoom(img, magnify, order=interpolation_order)
 
     @staticmethod
     def normalize(_img):
