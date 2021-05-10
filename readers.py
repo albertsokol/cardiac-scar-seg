@@ -155,9 +155,9 @@ class FileReader:
         return zoom(img, magnify, order=interpolation_order)
 
     @staticmethod
-    def normalize(_img):
+    def normalize(img):
         """ Normalize voxel values to be within 0 to 1 range. """
-        return (_img - np.min(_img)) / (np.max(_img) - np.min(_img))
+        return (img - np.min(img)) / (np.max(img) - np.min(img))
 
 
 class NIIReader(FileReader):
@@ -173,30 +173,3 @@ class NIIReader(FileReader):
     def read(self, f):
         """ Load the image using nibabel and convert to numpy array. """
         return self.numpy(nib.load(f, mmap=False))
-
-
-if __name__ == '__main__':
-    single = '/home/y4tsu/Desktop/data/dummy/label/scrV001.nii'
-    # label = '/home/y4tsu/Desktop/data/mri/labelsTr/la_003.nii'
-    # folder = '/home/y4tsu/Desktop/data/mri/imagesTr/'
-    reader = NIIReader()
-
-    img = reader.read(single)
-    # print(img.shape)
-    # resized = reader.resize(img, dims=(160, 160, 65))
-    # print(resized.shape)
-    #
-    # chops = reader.chop(_img, chop_size=(160, 160, 65), overlap=False, logging=False)
-    # print(len(chops))
-
-    # depth = 75
-    # recombine = np.concatenate((np.concatenate((_img[0][depth, :, :], _img[1][depth, :, :]), axis=1),
-    #                            np.concatenate((_img[2][depth, :, :], _img[3][depth, :, :]), axis=1)), axis=0)
-    # print(recombine.shape)
-    # plt.imshow(recombine, cmap='gray')
-    # plt.show()
-    reader.scroll_view(img)
-    # reader.scroll_view(resized)
-
-    # for x in os.listdir(folder):
-    #     reader.read(folder + x)

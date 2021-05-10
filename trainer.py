@@ -8,7 +8,7 @@ from tqdm import tqdm
 
 from callbacks import LearningRateFinder
 from losses import weighted_pixel_bce_loss, dice_loss, combined_dice_wpce_loss, SoftmaxLoss, WeightedSoftmaxLoss
-from metrics import dice_coefficient_wrapper
+from metrics import DiceMetric
 from models import create_segmentation_model, unet_pp_pretrain_model, UNet3D
 from tensorflow.keras.utils import plot_model
 
@@ -18,15 +18,18 @@ from generators import NIIGenerator
 
 class Trainer:
     """ Trainer class for training models. """
-    def __init__(self, model_save_path, image_path, label_path, mode, model, num_epochs, batch_size, image_size,
-                 train_val_test_splits, learning_rate, labels, loss_fn):
+    def __init__(self, model_save_path, train_image_path, train_label_path, val_image_path, val_label_path, mode, model,
+                 num_epochs, batch_size, image_size, train_val_test_splits, learning_rate, labels, loss_fn,
+                 augmentation):
         """
         Initializer for Trainer.
         """
         # File path parameters
         self.model_save_path = model_save_path
-        self.image_path = image_path
-        self.label_path = label_path
+        self.train_image_path = train_image_path
+        self.train_label_path = train_label_path
+        self.val_image_path = val_image_path
+        self.val_label_path = val_label_path
 
         # Mode: "lrf" for learning rate finder, "train" for normal model training
         assert mode in ['lrf', 'train'], f'mode \'{mode}\' does not exist, please use \'lrf\' or \'train\''
@@ -47,8 +50,9 @@ class Trainer:
         assert loss_fn in loss_dict, f'loss function {loss_fn}, not recognised, please pick one of: {loss_dict}'
 
         # Set up generator and augmentation etc.
-        self.augmenter = Augmenter()
-        self.generator = NIIGenerator(image_path, label_path, batch_size, image_size, labels, augmenter=self.augmenter)
+        self.augmenter = Augmenter(**augmentation)
+        self.train_gen = NIIGenerator(train_image_path, train_label_path, batch_size, image_size, labels, augmenter=self.augmenter)
+        self.val_gen = NIIGenerator(val_image_path, val_label_path, batch_size, image_size, labels)
 
         # Labels
         self.labels = labels
@@ -60,35 +64,59 @@ class Trainer:
     def calculate_label_weights(self):
         """ Calculate beta pixel weighting and it's inverse as the label weights for weighted loss functions. """
         sums = np.zeros(len(self.labels))
-        print(f'Calculating label weightings across {len(self.generator.image_fnames)} label images for use in loss'
+        print(f'Calculating label weightings across {len(self.train_gen.image_fnames)} label images for use in loss'
               f' function, may take a while ... ')
-        for i in tqdm(range(len(self.generator.image_fnames))):
-            _, label_img = self.generator.__getitem__(i)
+        for i in tqdm(range(len(self.train_gen.image_fnames))):
+            _, label_img = self.train_gen.__getitem__(i, weight_mode=True)
             # Get the number of labelled voxels of each class for each label image
             sums += [label_img[..., j].sum() for j in range(0, len(self.labels))]
             print(sums)
         # Get the total number of voxels in the dataset to normalize the beta
-        total_voxels = np.prod(np.array([*self.image_size, len(self.generator.image_fnames)]))
+        total_voxels = np.prod(np.array([*self.image_size, len(self.train_gen.image_fnames)]))
         beta = sums / total_voxels
         print(total_voxels)
         print(beta)
         # Return weightings: 1 / beta
         return 1. / beta
 
+    def lrf(self):
+        """ Put learning rate finder functionality here. """
+
     def train(self):
         """ Train the model. """
-        model = UNet3D(input_size=self.image_size,
-                       output_length=len(self.labels)).create_model()
+        model = UNet3D(input_size=self.image_size, output_length=len(self.labels)).create_model()
         # plot_model(model, 'UNet3Dplot.png', show_shapes=True)
         model.summary(line_length=160)
+
+        # Exit to learning rate finder if that mode has been selected
+        if self.mode == 'lrf':
+            self.lrf()
+
+        # TODO: learning rate finder
+        # TODO: modelcheckpoint
+        # TODO: plotting loss and metric history at the end
+        # TODO: taking 1 in every 20 slices of the z dimension to reduce input size
+        # TODO: implement other models
+        # TODO: assertions on all config stuff to prevent naughty values being given
+        # TODO: convert all the matlab images into .nii images
+        # TODO: experiment and train and have fun and sht
+        # TODO: split images into an actual training and validation set to make sure it's learning stuff
+        optimizer = optimizers.Adam(learning_rate=self.lr)
+        model.compile(optimizer=optimizer, loss=self.loss_fn, metrics=[DiceMetric()])
+        history = model.fit(self.train_gen,
+                            validation_data=self.val_gen,
+                            epochs=self.num_epochs,
+                            steps_per_epoch=len(self.train_gen.image_fnames) // self.batch_size,
+                            validation_steps=len(self.val_gen.image_fnames) // self.batch_size,
+                            # callbacks=cbs
+                            )
 
 
 if __name__ == '__main__':
     with open('config.json', 'r') as r:
         config = json.load(r)
 
-    trainer = Trainer(**config)
-    trainer.train()
+    Trainer(**config).train()
 
     # Loading data and training constants
     overall_df = pd.read_csv(csv_path, index_col='ImageId')

@@ -1,12 +1,14 @@
 {
   "model_save_path": "/path/where/model/will/be/saved/",
-  "image_path": "/home/y4tsu/Desktop/data/dummy/image",
-  "label_path": "/home/y4tsu/Desktop/data/dummy/label",
-  "mode": "lrf",
+  "train_image_path": "/home/y4tsu/Desktop/data/dummy/image",
+  "train_label_path": "/home/y4tsu/Desktop/data/dummy/label",
+  "val_image_path": "/home/y4tsu/Desktop/data/dummy/image",
+  "val_label_path": "/home/y4tsu/Desktop/data/dummy/label",
+  "mode": "train",
   "model": "UNet3D",
-  "num_epochs": 1,
+  "num_epochs": 20,
   "batch_size": 1,
-  "image_size": [192, 192, 192],
+  "image_size": [96, 96, 96],
   "train_val_test_splits": [0.7, 0.15, 0.15],
   "learning_rate": 3e-4,
   "loss_fn": "weighted softmax",
@@ -16,5 +18,12 @@
     "2": "left ventricle myocardium",
     "3": "left ventricle lumen",
     "4": "scar"
+  },
+  "augmentation": {
+    "zoom": [0.95, 1.05],
+    "rotate": 8.0,
+    "translate": 0.06,
+    "brightness": 0.15,
+    "deform": true
   }
 }

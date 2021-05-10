@@ -1,9 +1,11 @@
 import tensorflow.keras.backend as K
+from tensorflow.keras.losses import Loss
 
 
-class __Loss:
+class __Loss(Loss):
     """ Generic methods for all loss functions. """
-    def __init__(self, batch_size, image_size):
+    def __init__(self, batch_size, image_size, **kwargs):
+        super().__init__(**kwargs)
         self.batch_size = batch_size
         self.num_vox = image_size[0] * image_size[1] * image_size[2]
 
@@ -19,7 +21,7 @@ class SoftmaxLoss(__Loss):
     def __init__(self, batch_size, image_size):
         super().__init__(batch_size, image_size)
 
-    def __call__(self, *args, **kwargs):
+    def call(self, *args, **kwargs):
         y_true, y_pred = args[0], args[1]
 
         loss = - K.sum(y_true * K.log(self.clip(y_pred)))
@@ -34,7 +36,7 @@ class WeightedSoftmaxLoss(__Loss):
         super().__init__(batch_size, image_size)
         self.label_weights = label_weights
 
-    def __call__(self, *args, **kwargs):
+    def call(self, *args, **kwargs):
         y_true, y_pred = args[0], args[1]
 
         # label_weights is be a len(labels) length vector of voxel weights for each label
