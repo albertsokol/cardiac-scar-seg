@@ -1,26 +1,27 @@
 import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
+import tensorflow as tf
 from tensorflow.keras import callbacks
 from tensorflow.keras import optimizers
 import json
 from tqdm import tqdm
 
-from callbacks import LearningRateFinder
-from losses import weighted_pixel_bce_loss, dice_loss, combined_dice_wpce_loss, SoftmaxLoss, WeightedSoftmaxLoss
-from metrics import DiceMetric
-from models import create_segmentation_model, unet_pp_pretrain_model, UNet3D
 from tensorflow.keras.utils import plot_model
 
 from augmenter import Augmenter
+from callbacks import LearningRateFinder
 from generators import NIIGenerator
+from losses import SoftmaxLoss, WeightedSoftmaxLoss, DiceLoss
+from metrics import DiceMetric
+from models import UNet3D
 
 
 class Trainer:
     """ Trainer class for training models. """
-    def __init__(self, model_save_path, train_image_path, train_label_path, val_image_path, val_label_path, mode, model,
-                 num_epochs, batch_size, image_size, train_val_test_splits, learning_rate, labels, loss_fn,
-                 augmentation):
+    def __init__(self, model_save_path, train_image_path, train_label_path, val_image_path, val_label_path,
+                 test_image_path, test_label_path, mode, model, num_epochs, batch_size, image_size,
+                 learning_rate, labels, loss_fn, augmentation):
         """
         Initializer for Trainer.
         """
@@ -30,6 +31,8 @@ class Trainer:
         self.train_label_path = train_label_path
         self.val_image_path = val_image_path
         self.val_label_path = val_label_path
+        self.test_image_path = test_image_path
+        self.test_label_path = test_label_path
 
         # Mode: "lrf" for learning rate finder, "train" for normal model training
         assert mode in ['lrf', 'train'], f'mode \'{mode}\' does not exist, please use \'lrf\' or \'train\''
@@ -40,19 +43,19 @@ class Trainer:
         self.num_epochs = num_epochs
         self.batch_size = batch_size
         self.image_size = image_size
-        self.train_val_test_splits = train_val_test_splits
         self.lr = learning_rate
 
         loss_dict = {
             'softmax': SoftmaxLoss,
-            'weighted softmax': WeightedSoftmaxLoss
+            'weighted softmax': WeightedSoftmaxLoss,
+            'dice': DiceLoss
         }
         assert loss_fn in loss_dict, f'loss function {loss_fn}, not recognised, please pick one of: {loss_dict}'
 
         # Set up generator and augmentation etc.
         self.augmenter = Augmenter(**augmentation)
         self.train_gen = NIIGenerator(train_image_path, train_label_path, batch_size, image_size, labels, augmenter=self.augmenter)
-        self.val_gen = NIIGenerator(val_image_path, val_label_path, batch_size, image_size, labels)
+        self.val_gen = NIIGenerator(val_image_path, val_label_path, batch_size, image_size, labels, shuffle=False)
 
         # Labels
         self.labels = labels
@@ -62,7 +65,7 @@ class Trainer:
             self.loss_fn = loss_dict[loss_fn](batch_size, image_size)
 
     def calculate_label_weights(self):
-        """ Calculate beta pixel weighting and it's inverse as the label weights for weighted loss functions. """
+        """ Calculate beta pixel weighting and its inverse as the label weights for weighted loss functions. """
         sums = np.zeros(len(self.labels))
         print(f'Calculating label weightings across {len(self.train_gen.image_fnames)} label images for use in loss'
               f' function, may take a while ... ')
@@ -70,7 +73,6 @@ class Trainer:
             _, label_img = self.train_gen.__getitem__(i, weight_mode=True)
             # Get the number of labelled voxels of each class for each label image
             sums += [label_img[..., j].sum() for j in range(0, len(self.labels))]
-            print(sums)
         # Get the total number of voxels in the dataset to normalize the beta
         total_voxels = np.prod(np.array([*self.image_size, len(self.train_gen.image_fnames)]))
         beta = sums / total_voxels
@@ -81,6 +83,17 @@ class Trainer:
 
     def lrf(self):
         """ Put learning rate finder functionality here. """
+
+    @staticmethod
+    def warmup_lr(epoch, lr):
+        """ Warm up learning rate scheduler. """
+        if epoch > 3:
+            return lr
+        else:
+            # TODO: implement this in a big brain way
+            tf.print(epoch)
+            tf.print(lr / (10 ** ((3 - epoch) / 2.)))
+            return lr / (10 ** ((3 - epoch) / 2.))
 
     def train(self):
         """ Train the model. """
@@ -101,15 +114,24 @@ class Trainer:
         # TODO: convert all the matlab images into .nii images
         # TODO: experiment and train and have fun and sht
         # TODO: split images into an actual training and validation set to make sure it's learning stuff
+        # TODO: combined dice and weighted voxel cross entropy loss
+
         optimizer = optimizers.Adam(learning_rate=self.lr)
-        model.compile(optimizer=optimizer, loss=self.loss_fn, metrics=[DiceMetric()])
+        model.compile(optimizer=optimizer, loss=self.loss_fn, metrics=[DiceMetric(self.batch_size)])
+
         history = model.fit(self.train_gen,
                             validation_data=self.val_gen,
                             epochs=self.num_epochs,
                             steps_per_epoch=len(self.train_gen.image_fnames) // self.batch_size,
                             validation_steps=len(self.val_gen.image_fnames) // self.batch_size,
-                            # callbacks=cbs
+                            callbacks=[callbacks.ModelCheckpoint(self.model_save_path, monitor='val_dice',
+                                                                 save_best_only=True, verbose=1, mode='max')
+                                       ]
                             )
+
+        # Save the config that was used so that e.g., image size can be retrieved later for prediction
+        with open(f'{self.model_save_path}/train_config.json', 'w') as f:
+            f.write(json.dumps(config))
 
 
 if __name__ == '__main__':
