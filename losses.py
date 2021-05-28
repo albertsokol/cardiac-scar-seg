@@ -61,5 +61,39 @@ class DiceLoss(__Loss):
 
         loss = 1 - dice_coefficient
 
-        # Return loss normalized by batch size and image size for stable LRs across different input sizes
+        # Return loss normalized by batch size for stable LRs across different input sizes
         return loss / self.batch_size
+
+
+class WeightedSoftmaxDiceLoss(__Loss):
+    """ A combination of weighted cross-entropy loss and Dice loss, for the best of both worlds. """
+    def __init__(self, batch_size, image_size, label_weights, dice_weight=2.):
+        """
+        Initialiser for WeightedSoftmaxDiceLoss.
+
+        Params
+        ======
+        :param batch_size: int: number of examples per training batch
+        :param image_size:
+        :param label_weights:
+        :param dice_weight: float: e.g., if 2., then Dice loss is doubled to weight it more strongly
+        """
+        super().__init__(batch_size, image_size)
+        self.label_weights = label_weights
+        self.dice_weight = dice_weight
+
+    def call(self, *args, **kwargs):
+        y_true, y_pred = args[0], args[1]
+
+        # First, get the softmax loss
+        softmax_loss = - K.sum(self.label_weights * y_true * K.log(self.clip(y_pred)))
+        softmax_loss = softmax_loss / self.num_vox / self.batch_size
+
+        # Then, get the Dice loss
+        numerator = 2 * K.sum(y_true * y_pred)
+        denominator = K.sum(y_true ** 2) + K.sum(y_pred ** 2)
+        dice_coefficient = numerator / denominator
+        dice_loss = (1 - dice_coefficient) / self.batch_size
+
+        # Finally, combine the two
+        return self.dice_weight * dice_loss + softmax_loss

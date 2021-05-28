@@ -1,5 +1,5 @@
 {
-  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint",
+  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/experiment",
   "train_image_path": "/home/y4tsu/Desktop/data/train/image",
   "train_label_path": "/home/y4tsu/Desktop/data/train/label",
   "val_image_path": "/home/y4tsu/Desktop/data/val/image",
@@ -12,19 +12,21 @@
   "batch_size": 1,
   "image_size": [96, 96, 96],
   "learning_rate": 3e-3,
+  "lr_decay": 0.96,
+  "warmup": false,
   "loss_fn": "dice",
   "labels": {
-    "0": "background",
-    "1": "right ventricle",
-    "2": "left ventricle myocardium",
-    "3": "left ventricle lumen",
+    "0": "bg",
+    "1": "rv",
+    "2": "lv myo",
+    "3": "lv lumen",
     "4": "scar"
   },
   "augmentation": {
-    "zoom": [0.95, 1.05],
-    "rotate": 6.0,
-    "translate": 0.06,
-    "brightness": 0.15,
-    "deform": true
+    "zoom": false,
+    "rotate": false,
+    "translate": false,
+    "brightness": false,
+    "deform": false
   }
 }

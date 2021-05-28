@@ -2,8 +2,6 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import callbacks
-from tensorflow.keras import optimizers
 import json
 from tqdm import tqdm
 
@@ -12,8 +10,8 @@ from tensorflow.keras.utils import plot_model
 from augmenter import Augmenter
 from callbacks import LearningRateFinder
 from generators import NIIGenerator
-from losses import SoftmaxLoss, WeightedSoftmaxLoss, DiceLoss
-from metrics import DiceMetric
+from losses import SoftmaxLoss, WeightedSoftmaxLoss, DiceLoss, WeightedSoftmaxDiceLoss
+from metrics import DiceMetric, ClassWiseDiceMetric
 from models import UNet3D
 
 
@@ -21,7 +19,7 @@ class Trainer:
     """ Trainer class for training models. """
     def __init__(self, model_save_path, train_image_path, train_label_path, val_image_path, val_label_path,
                  test_image_path, test_label_path, mode, model, num_epochs, batch_size, image_size,
-                 learning_rate, labels, loss_fn, augmentation):
+                 learning_rate, lr_decay, warmup, labels, loss_fn, augmentation):
         """
         Initializer for Trainer.
         """
@@ -38,31 +36,65 @@ class Trainer:
         assert mode in ['lrf', 'train'], f'mode \'{mode}\' does not exist, please use \'lrf\' or \'train\''
         self.mode = mode
 
+        assert not (warmup and lr_decay), "currently warmup and lr_decay cannot be used simultaneously"
+
         # Training parameters
         self.model = model
         self.num_epochs = num_epochs
         self.batch_size = batch_size
         self.image_size = image_size
         self.lr = learning_rate
+        self.lr_decay = lr_decay
+        self.warmup = warmup
+        self.callbacks = [
+            tf.keras.callbacks.ModelCheckpoint(
+                self.model_save_path,
+                monitor='val_dice',
+                save_best_only=True,
+                verbose=1,
+                mode='max'
+            )
+        ]
 
         loss_dict = {
             'softmax': SoftmaxLoss,
             'weighted softmax': WeightedSoftmaxLoss,
-            'dice': DiceLoss
+            'dice': DiceLoss,
+            'weighted softmax dice': WeightedSoftmaxDiceLoss
         }
         assert loss_fn in loss_dict, f'loss function {loss_fn}, not recognised, please pick one of: {loss_dict}'
 
         # Set up generator and augmentation etc.
         self.augmenter = Augmenter(**augmentation)
-        self.train_gen = NIIGenerator(train_image_path, train_label_path, batch_size, image_size, labels, augmenter=self.augmenter)
-        self.val_gen = NIIGenerator(val_image_path, val_label_path, batch_size, image_size, labels, shuffle=False)
+        self.train_gen = NIIGenerator(
+            train_image_path,
+            train_label_path,
+            batch_size,
+            image_size,
+            labels,
+            augmenter=self.augmenter
+        )
+        self.val_gen = NIIGenerator(
+            val_image_path,
+            val_label_path,
+            batch_size,
+            image_size,
+            labels,
+            shuffle=False
+        )
 
         # Labels
         self.labels = labels
-        if loss_fn == 'weighted softmax':
+        if loss_fn in ['weighted softmax', 'weighted softmax dice']:
             self.loss_fn = loss_dict[loss_fn](batch_size, image_size, self.calculate_label_weights())
         else:
             self.loss_fn = loss_dict[loss_fn](batch_size, image_size)
+
+        # Learning rate warmup: will be used if true
+        if self.warmup:
+            self.callbacks += [
+                tf.keras.callbacks.LearningRateScheduler(self.warmup_lr)
+            ]
 
     def calculate_label_weights(self):
         """ Calculate beta pixel weighting and its inverse as the label weights for weighted loss functions. """
@@ -84,16 +116,14 @@ class Trainer:
     def lrf(self):
         """ Put learning rate finder functionality here. """
 
-    @staticmethod
-    def warmup_lr(epoch, lr):
-        """ Warm up learning rate scheduler. """
-        if epoch > 3:
-            return lr
+    def warmup_lr(self, *args):
+        """ Warm up learning rate scheduler. Just naively reduce the LR for epoch 1 to get steadier momentum. """
+        epoch = args[0]
+        if epoch != 0:
+            return self.lr
         else:
-            # TODO: implement this in a big brain way
-            tf.print(epoch)
-            tf.print(lr / (10 ** ((3 - epoch) / 2.)))
-            return lr / (10 ** ((3 - epoch) / 2.))
+            print('Training with 10x reduced LR for epoch 1 for warmup ... ')
+            return self.lr / 10.
 
     def train(self):
         """ Train the model. """
@@ -106,27 +136,36 @@ class Trainer:
             self.lrf()
 
         # TODO: learning rate finder
-        # TODO: modelcheckpoint
         # TODO: plotting loss and metric history at the end
         # TODO: taking 1 in every 20 slices of the z dimension to reduce input size
         # TODO: implement other models
         # TODO: assertions on all config stuff to prevent naughty values being given
-        # TODO: convert all the matlab images into .nii images
-        # TODO: experiment and train and have fun and sht
-        # TODO: split images into an actual training and validation set to make sure it's learning stuff
-        # TODO: combined dice and weighted voxel cross entropy loss
+        # TODO: class-wise dice scores during evaluation could be a gud man ting nam sayen
 
-        optimizer = optimizers.Adam(learning_rate=self.lr)
-        model.compile(optimizer=optimizer, loss=self.loss_fn, metrics=[DiceMetric(self.batch_size)])
+        # Learning rate decay: will be used if not 0. Recommend 0.96 if using. Otherwise use static LR
+        if self.lr_decay:
+            schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+                self.lr,
+                self.num_epochs * len(self.train_gen.image_fnames) // self.batch_size,
+                self.lr_decay
+            )
+        else:
+            schedule = self.lr
+
+        optimizer = tf.keras.optimizers.Adam(learning_rate=schedule)
+        model.compile(
+            optimizer=optimizer,
+            loss=self.loss_fn,
+            metrics=[DiceMetric(self.batch_size)] +
+                    [ClassWiseDiceMetric(self.batch_size, int(i), self.labels[i]) for i in self.labels]
+        )
 
         history = model.fit(self.train_gen,
                             validation_data=self.val_gen,
                             epochs=self.num_epochs,
                             steps_per_epoch=len(self.train_gen.image_fnames) // self.batch_size,
                             validation_steps=len(self.val_gen.image_fnames) // self.batch_size,
-                            callbacks=[callbacks.ModelCheckpoint(self.model_save_path, monitor='val_dice',
-                                                                 save_best_only=True, verbose=1, mode='max')
-                                       ]
+                            callbacks=self.callbacks
                             )
 
         # Save the config that was used so that e.g., image size can be retrieved later for prediction
