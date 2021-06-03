@@ -8,8 +8,8 @@ from tqdm import tqdm
 from tensorflow.keras.utils import plot_model
 
 from augmenter import Augmenter
-from callbacks import LearningRateFinder
-from generators import NIIGenerator
+from callbacks import LearningRateFinder, LearningRatePrinter
+from generators import NIIGenerator3D
 from losses import SoftmaxLoss, WeightedSoftmaxLoss, DiceLoss, WeightedSoftmaxDiceLoss
 from metrics import DiceMetric, ClassWiseDiceMetric
 from models import UNet3D
@@ -18,7 +18,7 @@ from models import UNet3D
 class Trainer:
     """ Trainer class for training models. """
     def __init__(self, model_save_path, train_image_path, train_label_path, val_image_path, val_label_path,
-                 test_image_path, test_label_path, mode, model, num_epochs, batch_size, image_size,
+                 test_image_path, test_label_path, mode, model, slice_20, num_epochs, batch_size, image_size,
                  learning_rate, lr_decay, warmup, labels, loss_fn, augmentation):
         """
         Initializer for Trainer.
@@ -66,20 +66,22 @@ class Trainer:
 
         # Set up generator and augmentation etc.
         self.augmenter = Augmenter(**augmentation)
-        self.train_gen = NIIGenerator(
+        self.train_gen = NIIGenerator3D(
             train_image_path,
             train_label_path,
             batch_size,
             image_size,
             labels,
+            slice_20,
             augmenter=self.augmenter
         )
-        self.val_gen = NIIGenerator(
+        self.val_gen = NIIGenerator3D(
             val_image_path,
             val_label_path,
             batch_size,
             image_size,
             labels,
+            slice_20,
             shuffle=False
         )
 
@@ -115,6 +117,8 @@ class Trainer:
 
     def lrf(self):
         """ Put learning rate finder functionality here. """
+        lrf = LearningRateFinder(self.num_epochs * len(self.train_gen.image_fnames) // self.batch_size)
+        lrf.plot()
 
     def warmup_lr(self, *args):
         """ Warm up learning rate scheduler. Just naively reduce the LR for epoch 1 to get steadier momentum. """
@@ -124,6 +128,29 @@ class Trainer:
         else:
             print('Training with 10x reduced LR for epoch 1 for warmup ... ')
             return self.lr / 10.
+
+    def plot(self, history):
+        # Plot the losses and dice coefficients for the model
+        loss_history = history.history['loss']
+        val_loss_history = history.history['val_loss']
+        dice_coefficient_history = history.history['dice_coefficient']
+        val_dice_coefficient_history = history.history['val_dice_coefficient']
+
+        fig, axs = plt.subplots(2)
+        fig.set_size_inches(8, 12)
+
+        axs[0].plot(range(1, 1 + len(loss_history)), loss_history, 'r-', label='train loss')
+        axs[0].plot(range(1, 1 + len(val_loss_history)), val_loss_history, 'b-', label='val loss')
+        axs[0].set(xlabel='epochs', ylabel='loss')
+        axs[0].legend(loc="upper right")
+
+        axs[1].plot(range(1, 1 + len(dice_coefficient_history)), dice_coefficient_history, 'g-', label='train dice')
+        axs[1].plot(range(1, 1 + len(val_dice_coefficient_history)), val_dice_coefficient_history, 'm-',
+                    label='val dice')
+        axs[1].set(xlabel='epochs', ylabel='dice coefficient')
+        axs[1].legend(loc="upper right")
+
+        plt.show()
 
     def train(self):
         """ Train the model. """
@@ -140,7 +167,7 @@ class Trainer:
         # TODO: taking 1 in every 20 slices of the z dimension to reduce input size
         # TODO: implement other models
         # TODO: assertions on all config stuff to prevent naughty values being given
-        # TODO: class-wise dice scores during evaluation could be a gud man ting nam sayen
+        # TODO: 2D generator
 
         # Learning rate decay: will be used if not 0. Recommend 0.96 if using. Otherwise use static LR
         if self.lr_decay:
@@ -149,6 +176,7 @@ class Trainer:
                 self.num_epochs * len(self.train_gen.image_fnames) // self.batch_size,
                 self.lr_decay
             )
+            # self.callbacks += [LearningRatePrinter()]
         else:
             schedule = self.lr
 
@@ -178,91 +206,3 @@ if __name__ == '__main__':
         config = json.load(r)
 
     Trainer(**config).train()
-
-    # Loading data and training constants
-    overall_df = pd.read_csv(csv_path, index_col='ImageId')
-    overall_df_size = len(overall_df)
-    train_num = int(overall_df_size * TRAIN_PROP)
-    print('Number of training samples:', train_num, 'Number of validation samples:', overall_df_size - train_num)
-    TRAIN_STEPS = train_num // BATCH_SIZE
-    VAL_STEPS = (overall_df_size - train_num) // BATCH_SIZE
-
-    # Set up dataframes and generators
-    train_df = overall_df[:train_num]
-    val_df = overall_df[train_num:]
-    train_generator = SegGenerator(train_df, image_path, BATCH_SIZE, resize_to=RESIZE_TO)
-    val_generator = SegGenerator(val_df, image_path, BATCH_SIZE, resize_to=RESIZE_TO, aug=False)
-
-    # Set up loss functions and metrics - by default, combined_loss is used
-    weighted_bce_loss = weighted_pixel_bce_loss(beta_pixel_weighting, BATCH_SIZE)
-    dice_loss = dice_loss()
-    combined_loss = combined_dice_wpce_loss(beta_pixel_weighting, BATCH_SIZE)
-    dice_coefficient = dice_coefficient_wrapper()
-
-    # Set up callbacks - if using 'train' mode, model with best val dice coefficient will be saved to save_path
-    if mode == 'lrf':
-        lrf = LearningRateFinder(NUM_EPOCHS * TRAIN_STEPS)
-        cbs = [lrf]
-    if mode == 'train':
-        checkpoint = callbacks.ModelCheckpoint(save_path, monitor='val_dice_coefficient', save_best_only=True,
-                                               verbose=1, mode='max')
-        cbs = [checkpoint]
-
-    # Load classification UNet++ trained on ImageNet (224x224 input)
-    imgnet_model = unet_pp_pretrain_model(224)
-    imgnet_model.load_weights(imgnet_pretrain_path)
-
-    # Create a new segmentation UNet++/UNet (512x512 input)
-    model = create_segmentation_model(RESIZE_TO)
-
-    # Because the input sizes and output heads are different, transfer weights like this
-    print('Loading following layer weights from ImageNet pretrained model to new segmentation model...')
-    for i in range(1, len(imgnet_model.layers) - 2):
-        wts = imgnet_model.layers[i].get_weights()
-        model.layers[i].set_weights(wts)
-        print('imgnet:', imgnet_model.layers[i].name, '--------> seg:', model.layers[i].name)
-
-    """
-    Change and uncomment this if you want to freeze layers during training. 
-    
-    for l in model.layers:
-        if l.name == 'conv2d_14' or l.name == 'conv2d_15':
-            l.trainable = False
-    """
-
-    # Set up Adam optimizer and compile the model - can change the loss for experimenting
-    opt = optimizers.Adam(learning_rate=lr)
-    model.compile(optimizer=opt, loss=combined_loss, metrics=[dice_coefficient])
-
-    # Begin training
-    history = model.fit(train_generator,
-                        validation_data=val_generator,
-                        epochs=NUM_EPOCHS,
-                        steps_per_epoch=TRAIN_STEPS,
-                        validation_steps=VAL_STEPS,
-                        callbacks=cbs)
-
-    # Plot callback graphs if used
-    if mode == 'lrf':
-        lrf.plot()
-
-    # Plot the losses and dice coefficients for the model
-    loss_history = history.history['loss']
-    val_loss_history = history.history['val_loss']
-    dice_coefficient_history = history.history['dice_coefficient']
-    val_dice_coefficient_history = history.history['val_dice_coefficient']
-
-    fig, axs = plt.subplots(2)
-    fig.set_size_inches(8, 12)
-
-    axs[0].plot(range(1, 1 + len(loss_history)), loss_history, 'r-', label='train loss')
-    axs[0].plot(range(1, 1 + len(val_loss_history)), val_loss_history, 'b-', label='val loss')
-    axs[0].set(xlabel='epochs', ylabel='loss')
-    axs[0].legend(loc="upper right")
-
-    axs[1].plot(range(1, 1 + len(dice_coefficient_history)), dice_coefficient_history, 'g-', label='train dice')
-    axs[1].plot(range(1, 1 + len(val_dice_coefficient_history)), val_dice_coefficient_history, 'm-', label='val dice')
-    axs[1].set(xlabel='epochs', ylabel='dice coefficient')
-    axs[1].legend(loc="upper right")
-
-    plt.show()

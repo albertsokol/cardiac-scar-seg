@@ -7,11 +7,11 @@ from tensorflow import one_hot
 from readers import NIIReader
 
 
-class NIIGenerator(Sequence):
+class NIIGenerator3D(Sequence):
     """ Class for the .nii image generator. """
-    def __init__(self, image_path, label_path, batch_size, image_size, labels, shuffle=True, augmenter=None):
+    def __init__(self, image_path, label_path, batch_size, image_size, labels, slice_20, shuffle=True, augmenter=None):
         # Set up image filenames and indexing
-        self.reader = NIIReader()
+        self.reader = NIIReader(slice_20=slice_20)
         self.augmenter = augmenter
         self.image_path = image_path
         self.label_path = label_path

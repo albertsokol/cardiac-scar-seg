@@ -1,7 +1,27 @@
 import matplotlib.pyplot as plt
 import numpy as np
+import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras.callbacks import Callback
+
+
+class LearningRatePrinter(Callback):
+    """ Pretty simple: just prints the learning rate. """
+    def __init__(self, frequency='batch'):
+        """
+        Initializer for LearningRatePrinter.
+
+        :param frequency: str:
+        """
+        super().__init__()
+        self.frequency = frequency
+
+    def on_batch_end(self, batch, logs=None):
+        if self.frequency == 'batch':
+            tf.print(self.model.optimizer.lr)
+
+    def on_epoch_end(self, epoch, logs=None):
+        tf.print(self.model.optimizer.lr)
 
 
 class LearningRateFinder(Callback):

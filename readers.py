@@ -1,3 +1,5 @@
+import os
+
 import nibabel as nib
 import numpy as np
 from matplotlib import pyplot as plt
@@ -162,8 +164,14 @@ class FileReader:
 
 class NIIReader(FileReader):
     """ Class for reading MRI images in .nii file format. """
-    def __init__(self):
+    def __init__(self, slice_20=True):
+        """
+
+        :param slice_20: bool: take only every 20th slice along the sagittal plane as these are just interpolated
+                               in the original dataset
+        """
         super().__init__()
+        self.slice_20 = slice_20
 
     @staticmethod
     def numpy(img):
@@ -172,4 +180,20 @@ class NIIReader(FileReader):
 
     def read(self, f):
         """ Load the image using nibabel and convert to numpy array. """
-        return self.numpy(nib.load(f, mmap=False))
+        if self.slice_20:
+            return self.numpy(nib.load(f, mmap=False))[:, :, ::20]
+        else:
+            return self.numpy(nib.load(f, mmap=False))
+
+
+if __name__ == '__main__':
+    reader = NIIReader()
+    image_fnames = [
+        os.path.join('/home/y4tsu/Desktop/data/train/image', x)
+        for x in sorted(os.listdir('/home/y4tsu/Desktop/data/train/image'))
+    ]
+
+    for name in image_fnames:
+        img = reader.read(name)
+        reader.scroll_view(img, 'transverse')
+        print(img.shape)
