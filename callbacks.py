@@ -125,7 +125,7 @@ class LearningRateFinder(Callback):
         _axs[1].set(xlabel='iterations', ylabel='learning rate')
         plt.show()
 
-    def __smooth_losses(self, beta=0.96):
+    def __smooth_losses(self, beta=0.99):
         """ Returns an exponential moving average of the losses for smoother plotting.
 
         By default, beta is set to 0.96 which will result in moving average of around 25 data points. Decrease beta

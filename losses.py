@@ -1,3 +1,4 @@
+import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras.losses import Loss
 
@@ -95,5 +96,5 @@ class WeightedSoftmaxDiceLoss(__Loss):
         dice_coefficient = numerator / denominator
         dice_loss = (1 - dice_coefficient) / self.batch_size
 
-        # Finally, combine the two
-        return self.dice_weight * dice_loss + softmax_loss
+        # Finally, combine the two and normalize
+        return (self.dice_weight * dice_loss + softmax_loss) / (self.dice_weight + 1)

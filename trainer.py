@@ -1,5 +1,4 @@
 import matplotlib.pyplot as plt
-import pandas as pd
 import numpy as np
 import tensorflow as tf
 import json
@@ -115,9 +114,19 @@ class Trainer:
         # Return weightings: 1 / beta
         return 1. / beta
 
-    def lrf(self):
-        """ Put learning rate finder functionality here. """
+    def lrf(self, model):
+        """ Run the learning rate finder. """
+        self.num_epochs = 3
         lrf = LearningRateFinder(self.num_epochs * len(self.train_gen.image_fnames) // self.batch_size)
+        optimizer = tf.keras.optimizers.Adam()
+        model.compile(optimizer=optimizer, loss=self.loss_fn)
+        model.fit(self.train_gen,
+                  validation_data=self.val_gen,
+                  epochs=self.num_epochs,
+                  steps_per_epoch=len(self.train_gen.image_fnames) // self.batch_size,
+                  validation_steps=len(self.val_gen.image_fnames) // self.batch_size,
+                  callbacks=[lrf]
+                  )
         lrf.plot()
 
     def warmup_lr(self, *args):
@@ -160,11 +169,10 @@ class Trainer:
 
         # Exit to learning rate finder if that mode has been selected
         if self.mode == 'lrf':
-            self.lrf()
+            self.lrf(model)
+            return
 
-        # TODO: learning rate finder
         # TODO: plotting loss and metric history at the end
-        # TODO: taking 1 in every 20 slices of the z dimension to reduce input size
         # TODO: implement other models
         # TODO: assertions on all config stuff to prevent naughty values being given
         # TODO: 2D generator
@@ -199,6 +207,9 @@ class Trainer:
         # Save the config that was used so that e.g., image size can be retrieved later for prediction
         with open(f'{self.model_save_path}/train_config.json', 'w') as f:
             f.write(json.dumps(config))
+
+        # Plot the losses
+        self.plot(history)
 
 
 if __name__ == '__main__':
