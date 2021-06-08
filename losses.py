@@ -1,6 +1,7 @@
 import tensorflow as tf
 import tensorflow.keras.backend as K
 from tensorflow.keras.losses import Loss
+from functools import reduce
 
 
 class __Loss(Loss):
@@ -8,7 +9,10 @@ class __Loss(Loss):
     def __init__(self, batch_size, image_size, **kwargs):
         super().__init__(**kwargs)
         self.batch_size = batch_size
-        self.num_vox = image_size[0] * image_size[1] * image_size[2]
+        self.num_vox = reduce(lambda x, y: x * y, image_size, 1)
+
+    def call(self, *args, **kwargs):
+        raise NotImplementedError
 
     @staticmethod
     def clip(z):
@@ -53,17 +57,14 @@ class DiceLoss(__Loss):
         super().__init__(batch_size, image_size)
 
     def call(self, *args, **kwargs):
-        y_true, y_pred = args[0], args[1]
+        y_true, y_pred = K.flatten(args[0]), K.flatten(args[1])
 
-        numerator = 2 * K.sum(y_true * y_pred)
-        denominator = K.sum(y_true ** 2) + K.sum(y_pred ** 2)
+        numerator = 2 * K.sum(y_true * y_pred) + 1e-7
+        denominator = K.sum(y_true) + K.sum(y_pred) + 1e-7
 
         dice_coefficient = numerator / denominator
 
-        loss = 1 - dice_coefficient
-
-        # Return loss normalized by batch size for stable LRs across different input sizes
-        return loss / self.batch_size
+        return 1 - dice_coefficient
 
 
 class WeightedSoftmaxDiceLoss(__Loss):
@@ -91,10 +92,10 @@ class WeightedSoftmaxDiceLoss(__Loss):
         softmax_loss = softmax_loss / self.num_vox / self.batch_size
 
         # Then, get the Dice loss
-        numerator = 2 * K.sum(y_true * y_pred)
-        denominator = K.sum(y_true ** 2) + K.sum(y_pred ** 2)
+        numerator = 2 * K.sum(y_true * y_pred) + 1e-7
+        denominator = K.sum(y_true) + K.sum(y_pred) + 1e-7
         dice_coefficient = numerator / denominator
-        dice_loss = (1 - dice_coefficient) / self.batch_size
+        dice_loss = 1 - dice_coefficient
 
         # Finally, combine the two and normalize
         return (self.dice_weight * dice_loss + softmax_loss) / (self.dice_weight + 1)

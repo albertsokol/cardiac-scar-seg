@@ -2,34 +2,51 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 import json
+import os
 from tqdm import tqdm
 
 from tensorflow.keras.utils import plot_model
 
 from augmenter import Augmenter
 from callbacks import LearningRateFinder, LearningRatePrinter
-from generators import NIIGenerator3D
+from generators import Generator3D, Generator2D
 from losses import SoftmaxLoss, WeightedSoftmaxLoss, DiceLoss, WeightedSoftmaxDiceLoss
 from metrics import DiceMetric, ClassWiseDiceMetric
-from models import UNet3D
+from models import UNet3D, UNet2D
 
 
 class Trainer:
     """ Trainer class for training models. """
-    def __init__(self, model_save_path, train_image_path, train_label_path, val_image_path, val_label_path,
-                 test_image_path, test_label_path, mode, model, slice_20, num_epochs, batch_size, image_size,
+
+    def __init__(self, model_save_path, data_path, mode, model, slice_20, plane, num_epochs, batch_size, image_size,
                  learning_rate, lr_decay, warmup, labels, loss_fn, augmentation):
         """
         Initializer for Trainer.
         """
         # File path parameters
         self.model_save_path = model_save_path
-        self.train_image_path = train_image_path
-        self.train_label_path = train_label_path
-        self.val_image_path = val_image_path
-        self.val_label_path = val_label_path
-        self.test_image_path = test_image_path
-        self.test_label_path = test_label_path
+        if model in ['UNet3D']:
+            self.dimensionality = '3D'
+            print(f'plane and slice_20 ignored since using 3D model: {model}')
+            plane = ""
+        else:
+            self.dimensionality = '2D'
+            assert plane in ["transverse", "sagittal", "coronal"], "Plane must be one of: 'transverse', 'sagittal', 'coronal'"
+        self.train_image_path = os.path.join(data_path, self.dimensionality, 'train', plane, 'image')
+        self.train_label_path = os.path.join(data_path, self.dimensionality, 'train', plane, 'label')
+        self.val_image_path = os.path.join(data_path, self.dimensionality, 'val', plane, 'image')
+        self.val_label_path = os.path.join(data_path, self.dimensionality, 'val', plane, 'label')
+        self.test_image_path = os.path.join(data_path, self.dimensionality, 'test', plane, 'image')
+        self.test_label_path = os.path.join(data_path, self.dimensionality, 'test', plane, 'label')
+
+        self.model_dict = {
+            "UNet3D": UNet3D,
+            "UNet2D": UNet2D
+        }
+        self.gen_dict = {
+            "3D": Generator3D,
+            "2D": Generator2D
+        }
 
         # Mode: "lrf" for learning rate finder, "train" for normal model training
         assert mode in ['lrf', 'train'], f'mode \'{mode}\' does not exist, please use \'lrf\' or \'train\''
@@ -65,22 +82,22 @@ class Trainer:
 
         # Set up generator and augmentation etc.
         self.augmenter = Augmenter(**augmentation)
-        self.train_gen = NIIGenerator3D(
-            train_image_path,
-            train_label_path,
+        self.train_gen = self.gen_dict[self.dimensionality](
+            self.train_image_path,
+            self.train_label_path,
             batch_size,
             image_size,
             labels,
-            slice_20,
+            slice_20=slice_20,
             augmenter=self.augmenter
         )
-        self.val_gen = NIIGenerator3D(
-            val_image_path,
-            val_label_path,
+        self.val_gen = self.gen_dict[self.dimensionality](
+            self.val_image_path,
+            self.val_label_path,
             batch_size,
             image_size,
             labels,
-            slice_20,
+            slice_20=slice_20,
             shuffle=False
         )
 
@@ -102,15 +119,14 @@ class Trainer:
         sums = np.zeros(len(self.labels))
         print(f'Calculating label weightings across {len(self.train_gen.image_fnames)} label images for use in loss'
               f' function, may take a while ... ')
-        for i in tqdm(range(len(self.train_gen.image_fnames))):
+        for i in tqdm(range(len(self.train_gen.image_fnames) // self.batch_size)):
             _, label_img = self.train_gen.__getitem__(i, weight_mode=True)
             # Get the number of labelled voxels of each class for each label image
-            sums += [label_img[..., j].sum() for j in range(0, len(self.labels))]
+            sums += [label_img[..., j].sum() for j in range(len(self.labels))]
         # Get the total number of voxels in the dataset to normalize the beta
         total_voxels = np.prod(np.array([*self.image_size, len(self.train_gen.image_fnames)]))
         beta = sums / total_voxels
-        print(total_voxels)
-        print(beta)
+        print(1. / beta)
         # Return weightings: 1 / beta
         return 1. / beta
 
@@ -142,28 +158,69 @@ class Trainer:
         # Plot the losses and dice coefficients for the model
         loss_history = history.history['loss']
         val_loss_history = history.history['val_loss']
-        dice_coefficient_history = history.history['dice_coefficient']
-        val_dice_coefficient_history = history.history['val_dice_coefficient']
+        dice_coefficient_history = history.history['dice']
+        val_dice_coefficient_history = history.history['val_dice']
 
-        fig, axs = plt.subplots(2)
+        fig, axs = plt.subplots(nrows=2, ncols=2)
         fig.set_size_inches(8, 12)
 
-        axs[0].plot(range(1, 1 + len(loss_history)), loss_history, 'r-', label='train loss')
-        axs[0].plot(range(1, 1 + len(val_loss_history)), val_loss_history, 'b-', label='val loss')
-        axs[0].set(xlabel='epochs', ylabel='loss')
-        axs[0].legend(loc="upper right")
+        axs[0, 0].plot(range(1, 1 + len(loss_history)), loss_history, 'r-', label='train loss')
+        axs[0, 0].plot(range(1, 1 + len(val_loss_history)), val_loss_history, 'b-', label='val loss')
+        axs[0, 0].set(xlabel='epochs', ylabel='loss')
+        axs[0, 0].legend(loc="upper right")
 
-        axs[1].plot(range(1, 1 + len(dice_coefficient_history)), dice_coefficient_history, 'g-', label='train dice')
-        axs[1].plot(range(1, 1 + len(val_dice_coefficient_history)), val_dice_coefficient_history, 'm-',
-                    label='val dice')
-        axs[1].set(xlabel='epochs', ylabel='dice coefficient')
-        axs[1].legend(loc="upper right")
+        axs[0, 1].plot(range(1, 1 + len(dice_coefficient_history)), dice_coefficient_history, 'g-', label='train dice')
+        axs[0, 1].plot(range(1, 1 + len(val_dice_coefficient_history)), val_dice_coefficient_history, 'm-',
+                       label='val dice')
+        axs[0, 1].set(xlabel='epochs', ylabel='dice coefficient')
+        axs[0, 1].legend(loc="lower right")
+
+        if len(self.labels) > 5:
+            colors = ['red'] * len(self.labels)
+        else:
+            colors = [
+                'darkorange',
+                'coral',
+                'navy',
+                'dodgerblue',
+                'darkslategrey',
+                'teal',
+                'purple',
+                'darkorchid',
+                'maroon',
+                'crimson'
+            ]
+
+        i = 0
+        for label in list(self.labels.values()):
+            curr_train_hx = history.history[label]
+            curr_val_hx = history.history[f'val_{label}']
+            axs[1, 0].plot(
+                range(1, 1 + len(dice_coefficient_history)),
+                curr_train_hx,
+                color=colors[i],
+                label=f'train {label} dice'
+            )
+            i += 1
+            axs[1, 1].plot(
+                range(1, 1 + len(dice_coefficient_history)),
+                curr_val_hx,
+                color=colors[i],
+                label=f'val {label} dice'
+            )
+            i += 1
+
+        axs[1, 0].set(xlabel='epochs', ylabel='dice coefficient')
+        axs[1, 0].legend(loc="lower right")
+
+        axs[1, 1].set(xlabel='epochs', ylabel='dice coefficient')
+        axs[1, 1].legend(loc="lower right")
 
         plt.show()
 
     def train(self):
         """ Train the model. """
-        model = UNet3D(input_size=self.image_size, output_length=len(self.labels)).create_model()
+        model = self.model_dict[self.model](input_size=self.image_size, output_length=len(self.labels)).create_model()
         # plot_model(model, 'UNet3Dplot.png', show_shapes=True)
         model.summary(line_length=160)
 
@@ -172,10 +229,12 @@ class Trainer:
             self.lrf(model)
             return
 
-        # TODO: plotting loss and metric history at the end
         # TODO: implement other models
+        # TODO: test UNet2D
         # TODO: assertions on all config stuff to prevent naughty values being given
-        # TODO: 2D generator
+        # TODO: combine lv myo labels + scar labels -> LV myo for first stage of cascaded nets
+        # TODO: end-to-end or separately trained?
+        # TODO: 2D augmenter
 
         # Learning rate decay: will be used if not 0. Recommend 0.96 if using. Otherwise use static LR
         if self.lr_decay:
@@ -193,7 +252,8 @@ class Trainer:
             optimizer=optimizer,
             loss=self.loss_fn,
             metrics=[DiceMetric(self.batch_size)] +
-                    [ClassWiseDiceMetric(self.batch_size, int(i), self.labels[i]) for i in self.labels]
+                    [ClassWiseDiceMetric(self.batch_size, i, self.labels[label])
+                     for i, label in zip(range(len(self.labels)), self.labels)]
         )
 
         history = model.fit(self.train_gen,
@@ -206,7 +266,7 @@ class Trainer:
 
         # Save the config that was used so that e.g., image size can be retrieved later for prediction
         with open(f'{self.model_save_path}/train_config.json', 'w') as f:
-            f.write(json.dumps(config))
+            f.write(json.dumps(config, indent=4))
 
         # Plot the losses
         self.plot(history)

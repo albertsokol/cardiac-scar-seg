@@ -4,14 +4,12 @@ import numpy as np
 from tensorflow.keras.utils import Sequence
 from tensorflow import one_hot
 
-from readers import NIIReader
+from readers import NIIReader, NPYReader
 
 
-class NIIGenerator3D(Sequence):
-    """ Class for the .nii image generator. """
-    def __init__(self, image_path, label_path, batch_size, image_size, labels, slice_20, shuffle=True, augmenter=None):
+class __Generator(Sequence):
+    def __init__(self, image_path, label_path, batch_size, image_size, labels, shuffle, augmenter):
         # Set up image filenames and indexing
-        self.reader = NIIReader(slice_20=slice_20)
         self.augmenter = augmenter
         self.image_path = image_path
         self.label_path = label_path
@@ -62,8 +60,8 @@ class NIIGenerator3D(Sequence):
             if self.augmenter and not weight_mode:
                 img, label = self.augmenter.augment(img, label)
 
-            x[i, :, :, :, :] = self.prepare_img(img)
-            y[i, :, :, :, :] = self.prepare_label(label)
+            x[i, ...] = self.prepare_img(img)
+            y[i, ...] = self.prepare_label(label)
 
         return x, y
 
@@ -77,8 +75,7 @@ class NIIGenerator3D(Sequence):
         if img.shape != self.image_size:
             img = self.reader.resize(img, self.image_size)
 
-        if len(img.shape) != 4:
-            img = img[:, :, :, np.newaxis]
+        img = img[..., np.newaxis]
 
         return self.reader.normalize(img)
 
@@ -88,5 +85,28 @@ class NIIGenerator3D(Sequence):
         if label.shape != self.image_size:
             label = self.reader.resize(label, self.image_size, interpolation_order=0)
 
+        # Any labels which should not be included will be set as background here - just hack for now until RV sorted
+        if len(self.labels) != 5:
+            key_ints = [int(x) for x in list(self.labels.keys())]
+            label = np.where(np.isin(label, key_ints), label, 0.)
+            label = np.where(label == 2., 1., label)
+            label = np.where(label == 3., 2., label)
+            label = np.where(label == 4., 3., label)
+
         # One hot encode the labels to create a new channel for each label and save as int8 to save space
         return one_hot(label, len(self.labels), dtype=np.int8).numpy()
+
+
+class Generator3D(__Generator):
+    """ Class for the 3D image and label generator. """
+    def __init__(self, image_path, label_path, batch_size, image_size, labels, slice_20, shuffle=True, augmenter=None):
+        super().__init__(image_path, label_path, batch_size, image_size, labels, shuffle, augmenter)
+        self.reader = NIIReader(slice_20=slice_20)
+
+
+class Generator2D(__Generator):
+    """ Class for the 2D image and label generator. """
+    def __init__(self, image_path, label_path, batch_size, image_size, labels, slice_20, shuffle=True, augmenter=None):
+        super().__init__(image_path, label_path, batch_size, image_size, labels, shuffle, augmenter)
+        self.reader = NPYReader()
+

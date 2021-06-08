@@ -108,7 +108,7 @@ class VNetPlusPlus(SegModel3D):
 
 
 class UNet2D(SegModel2D):
-    def __init__(self, input_size, output_length, kernel_size=(3, 3), conv2d_transpose_kernel_size=(2, 2), depth=4):
+    def __init__(self, input_size, output_length, kernel_size=(3, 3), conv2d_transpose_kernel_size=(2, 2), depth=3):
         assert depth in [3, 4], f"Only depth 3 or 4 supported for UNet2D, but got {depth}"
         super().__init__(input_size, output_length, kernel_size, conv2d_transpose_kernel_size)
         self.depth = depth
@@ -124,7 +124,7 @@ class UNet2D(SegModel2D):
         return m
 
     def up_conv_block(self, m, prev, filters):
-        """ 3D up-convolution block. """
+        """ 2D up-convolution block. """
         m = layers.Conv2DTranspose(
             filters,
             self.conv2d_transpose_kernel_size,
@@ -135,9 +135,6 @@ class UNet2D(SegModel2D):
         m = layers.BatchNormalization()(m)
 
         m = layers.Concatenate()([m, prev])
-
-        m = layers.Conv2D(filters, self.kernel_size, padding='same', activation='relu')(m)
-        m = layers.BatchNormalization()(m)
 
         m = layers.Conv2D(filters, self.kernel_size, padding='same', activation='relu')(m)
         m = layers.BatchNormalization()(m)
@@ -166,14 +163,14 @@ class UNet2D(SegModel2D):
             conv4 = self.down_conv_block(pool3, 1024)
 
             # Upsampling / decoding portion
-            uconv3 = self.up_conv_block(conv4, conv3, 1024, 512)
-            uconv2 = self.up_conv_block(uconv3, conv2, 512, 256)
+            uconv3 = self.up_conv_block(conv4, conv3, 512)
+            uconv2 = self.up_conv_block(uconv3, conv2, 256)
         else:
             # Upsampling / decoding portion
-            uconv2 = self.up_conv_block(conv3, conv2, 512, 256)
+            uconv2 = self.up_conv_block(conv3, conv2, 256)
 
-        uconv1 = self.up_conv_block(uconv2, conv1, 256, 128)
-        uconv0 = self.up_conv_block(uconv1, conv0, 128, 64)
+        uconv1 = self.up_conv_block(uconv2, conv1, 128)
+        uconv0 = self.up_conv_block(uconv1, conv0, 64)
 
         out = layers.Conv2D(self.output_length, (1, 1), padding='same', activation='softmax')(uconv0)
 
