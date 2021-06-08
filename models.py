@@ -1,25 +1,30 @@
+from abc import ABC
+
 from tensorflow.keras import applications
 from tensorflow.keras import layers
 from tensorflow.keras import models
 
 
-# TODO: Implement these models !
-class SegModel:
+class SegModel(ABC):
     """ Class implementing generic and common segmentation model methods. """
     def __init__(self, input_size, output_length, kernel_size):
         self.input_size = input_size
         self.output_length = output_length
         self.kernel_size = kernel_size
 
+    def create_model(self):
+        raise NotImplementedError
 
-class SegModel2D(SegModel):
+
+class SegModel2D(SegModel, ABC):
+    """ Class implementing generic and common 2D segmentation model methods. """
     def __init__(self, input_size, output_length, kernel_size, conv2d_transpose_kernel_size):
         assert len(input_size) == 2, f"The input size for 2D models must have 2 dimensions, but got {input_size}"
         super().__init__(input_size, output_length, kernel_size)
         self.conv2d_transpose_kernel_size = conv2d_transpose_kernel_size
 
 
-class SegModel3D(SegModel):
+class SegModel3D(SegModel, ABC):
     """ Class implementing generic and common 3D segmentation model methods. """
     def __init__(self, input_size, output_length, kernel_size, conv3d_transpose_kernel_size):
         assert len(input_size) == 3, f"The input size for 3D models must have 3 dimensions, but got {input_size}"
@@ -182,6 +187,14 @@ class UNet2D(SegModel2D):
         model_input = layers.Input((self.input_size[0], self.input_size[1], 1))
 
         return models.Model(inputs=model_input, outputs=self.define_architecture(model_input))
+
+
+class UNetPP2D(SegModel2D):
+    def __init__(self, input_size, output_length, kernel_size, conv2d_transpose_kernel_size):
+        super().__init__(input_size, output_length, kernel_size, conv2d_transpose_kernel_size)
+
+    def create_model(self):
+        pass
 
 
 def down_conv_block(m, filter_mult, filters, kernel_size, name=None):

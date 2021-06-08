@@ -26,8 +26,8 @@ class ClassWiseDiceMetric(Metric):
         super(ClassWiseDiceMetric, self).__init__(name=name, **kwargs)
         self.batch_size = batch_size
         self.i = i
-        self.num_batches = self.add_weight(name='num_batches', initializer='zeros')
         self.total_dice = self.add_weight(name='dice_value', initializer='zeros')
+        self.num_batches = self.add_weight(name='num_batches', initializer='zeros')
 
     def update_state(self, y_true, y_pred):
         self.num_batches.assign_add(1)

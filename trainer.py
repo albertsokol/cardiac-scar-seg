@@ -243,7 +243,7 @@ class Trainer:
                 self.num_epochs * len(self.train_gen.image_fnames) // self.batch_size,
                 self.lr_decay
             )
-            # self.callbacks += [LearningRatePrinter()]
+            self.callbacks += [LearningRatePrinter()]
         else:
             schedule = self.lr
 

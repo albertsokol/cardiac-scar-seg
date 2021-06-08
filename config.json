@@ -6,14 +6,15 @@
   "slice_20": true,
   "plane": "transverse",
   "num_epochs": 50,
-  "batch_size": 1,
+  "batch_size": 4,
   "image_size": [160, 128, 16],
   "learning_rate": 1e-2,
-  "lr_decay": 0,
+  "lr_decay": 0.96,
   "warmup": false,
   "loss_fn": "weighted softmax",
   "labels": {
     "0": "bg",
+    "1": "rv",
     "2": "lv myo",
     "3": "lv lumen",
     "4": "scar"
