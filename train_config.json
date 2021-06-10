@@ -5,13 +5,13 @@
   "model": "UNet3D",
   "slice_20": true,
   "plane": "transverse",
-  "num_epochs": 50,
+  "num_epochs": 200,
   "batch_size": 4,
   "image_size": [160, 128, 16],
-  "learning_rate": 1e-2,
-  "lr_decay": 0.96,
+  "learning_rate": 3e-2,
+  "lr_decay": 0.5,
   "warmup": false,
-  "loss_fn": "weighted softmax",
+  "loss_fn": "weighted softmax dice",
   "labels": {
     "0": "bg",
     "1": "rv",
@@ -20,8 +20,8 @@
     "4": "scar"
   },
   "augmentation": {
-    "zoom": false,
-    "rotate": false,
+    "zoom": [0.96, 1.04],
+    "rotate": 12,
     "translate": false,
     "brightness": false,
     "deform": false

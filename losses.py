@@ -1,7 +1,7 @@
-import tensorflow as tf
+from functools import reduce
+
 import tensorflow.keras.backend as K
 from tensorflow.keras.losses import Loss
-from functools import reduce
 
 
 class __Loss(Loss):
@@ -67,9 +67,23 @@ class DiceLoss(__Loss):
         return 1 - dice_coefficient
 
 
+class WeightedDiceLoss(__Loss):
+    """ Dice loss, but each class is taken separately and weighted to give the final loss values. """
+    def __init__(self, batch_size, image_size, label_weights):
+        super().__init__(batch_size, image_size)
+        self.label_weights = label_weights
+
+    def call(self, *args, **kwargs):
+        y_true, y_pred = args[0], args[1]
+
+        # Should reduce to 5-dim vector somehow - use axis or keepdims ?
+        numerator = 2 * K.sum(y_true * y_pred) + 1e-7
+        denominator = K.sum(y_true) + K.sum(y_pred) + 1e-7
+
+
 class WeightedSoftmaxDiceLoss(__Loss):
-    """ A combination of weighted cross-entropy loss and Dice loss, for the best of both worlds. """
-    def __init__(self, batch_size, image_size, label_weights, dice_weight=2.):
+    """ A combination of weighted cross-entropy loss and Dice loss with adjustable weighting. """
+    def __init__(self, batch_size, image_size, label_weights, dice_weight=0.5):
         """
         Initialiser for WeightedSoftmaxDiceLoss.
 
@@ -98,4 +112,4 @@ class WeightedSoftmaxDiceLoss(__Loss):
         dice_loss = 1 - dice_coefficient
 
         # Finally, combine the two and normalize
-        return (self.dice_weight * dice_loss + softmax_loss) / (self.dice_weight + 1)
+        return self.dice_weight * dice_loss + softmax_loss

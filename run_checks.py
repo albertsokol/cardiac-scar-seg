@@ -1,7 +1,8 @@
-import numpy as np
 import os
-from readers import NIIReader
 
+import numpy as np
+
+from readers import NIIReader
 
 if __name__ == '__main__':
     reader = NIIReader(slice_20=False)

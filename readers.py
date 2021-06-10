@@ -2,10 +2,10 @@ import os
 
 import nibabel as nib
 import numpy as np
-from tqdm import tqdm
 from matplotlib import pyplot as plt
 from scipy.ndimage import zoom
 from skimage.transform import resize
+from tqdm import tqdm
 
 
 class IndexTracker:

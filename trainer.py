@@ -235,8 +235,9 @@ class Trainer:
         # TODO: combine lv myo labels + scar labels -> LV myo for first stage of cascaded nets
         # TODO: end-to-end or separately trained?
         # TODO: 2D augmenter
+        # TODO: check predictions using saved models
 
-        # Learning rate decay: will be used if not 0. Recommend 0.96 if using. Otherwise use static LR
+        # Learning rate decay: will be used if not 0, otherwise use static LR
         if self.lr_decay:
             schedule = tf.keras.optimizers.schedules.ExponentialDecay(
                 self.lr,
@@ -273,7 +274,7 @@ class Trainer:
 
 
 if __name__ == '__main__':
-    with open('config.json', 'r') as r:
+    with open('train_config.json', 'r') as r:
         config = json.load(r)
 
     Trainer(**config).train()

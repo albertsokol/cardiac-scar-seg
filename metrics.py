@@ -1,6 +1,5 @@
 import tensorflow.keras.backend as K
 from tensorflow.keras.metrics import Metric
-import tensorflow as tf
 
 
 class DiceMetric(Metric):

@@ -8,7 +8,7 @@ class Augmenter:
     def __init__(self, zoom=None, rotate=None, translate=None, deform=False, brightness=None):
         """
 
-        :param zoom: False, or tuple(float) length 2, idx0 = lower bound e.g., 0.95 for zoom out by 5% and idx1 = upper
+        :param zoom: False, or list(float) length 2, idx0 = lower bound e.g., 0.95 for zoom out by 5% and idx1 = upper
                      bound e.g., 1.05 for zoom in by 5%
         :param rotate: False, or float: maximal number of degrees to rotate by, recommend 8
         :param translate: False, or float: maximal % of given dimension size to translate by, recommend 0.06

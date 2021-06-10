@@ -1,8 +1,8 @@
 import os
 
 import numpy as np
-from tensorflow.keras.utils import Sequence
 from tensorflow import one_hot
+from tensorflow.keras.utils import Sequence
 
 from readers import NIIReader, NPYReader
 
