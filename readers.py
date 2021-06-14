@@ -70,78 +70,12 @@ class FileReader:
         plt.show()
 
     @staticmethod
-    def chop(img, chop_size, overlap=False, logging=False):
-        """ Return a list of MRI chunks (separated up into patches). """
-        h, w, d = img.shape
-        ch, cw, cd = chop_size
-        if h % ch != 0:
-            raise AttributeError(f'Chop height {ch} does not evenly split the input height {h}')
-        if w % cw != 0:
-            raise AttributeError(f'Chop width {cw} does not evenly split the input width {w}')
-        if d % cd != 0:
-            raise AttributeError(f'Chop depth {cd} does not evenly split the input depth {d}')
-        split_h = h // ch
-        split_w = w // cw
-        split_d = d // cd
-        if logging:
-            print(f'Split values: split_h: {split_h}, split_w: {split_w}, split_d: {split_d}')
-        # Split along the height
-        chop_h = []
-        if split_h > 1:
-            for i in range(split_h):
-                if logging:
-                    print(f'h chop indices: {ch * i}:{ch * (i + 1)}')
-                chop_h += [img[ch * i:ch * (i + 1), :, :]]
-            if overlap:
-                if logging:
-                    print(f'h overlap indices: {ch // 2}:{3 * ch // 2}')
-                chop_h += [img[ch // 2:3 * ch // 2, :, :]]
-        else:
-            chop_h = [img]
-        if logging:
-            for x in chop_h:
-                print(f'chop_h shapes: {x.shape}')
-        # Split along the width
-        if split_w > 1:
-            chop_w = []
-            for chop in chop_h:
-                for i in range(split_w):
-                    if logging:
-                        print(f'w chop indices: {cw * i}:{cw * (i + 1)}')
-                    chop_w += [chop[:, cw * i:cw * (i + 1), :]]
-                if overlap:
-                    if logging:
-                        print(f'w overlap indices: {cw // 2}:{3 * cw // 2}')
-                    chop_w += [chop[:, cw // 2:3 * cw // 2, :]]
-        else:
-            chop_w = chop_h
-        if logging:
-            for x in chop_w:
-                print(f'chop_w shapes: {x.shape}')
-        # Split along the depth
-        if split_d > 1:
-            result = []
-            for chop in chop_w:
-                for i in range(split_d):
-                    if logging:
-                        print(f'd chop indices: {cd * i}:{cd * (i + 1)}')
-                    result += [chop[:, :, cd * i:cd * (i + 1)]]
-                if overlap:
-                    if logging:
-                        print(f'd overlap indices: {cd // 2}:{3 * cd // 2}')
-                    result += [chop[:, :, cd // 2:3 * cd // 2]]
-        else:
-            result = chop_w
-        if logging:
-            for x in result:
-                print(f'result shapes: {x.shape}')
-            print(f'Total: {len(result)} chops')
-        return result
-
-    @staticmethod
     def normalize(img):
         """ Normalize voxel values to be within 0 to 1 range. """
         return (img - np.min(img)) / (np.max(img) - np.min(img))
+
+    def read(self, f):
+        raise NotImplementedError
 
 
 class NIIReader(FileReader):
@@ -199,8 +133,7 @@ class NPYReader(FileReader):
         assert type(img) == np.ndarray, 'image must be a numpy array to resize.'
         return resize(img, dims, order=interpolation_order)
 
-    @staticmethod
-    def read(f):
+    def read(self, f):
         """ Load the image using numpy. """
         return np.load(f)
 

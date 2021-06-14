@@ -2,8 +2,22 @@ import tensorflow.keras.backend as K
 from tensorflow.keras.metrics import Metric
 
 
-class DiceMetric(Metric):
-    def __init__(self, batch_size, name='dice', **kwargs):
+class __Metric(Metric):
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+
+    def get_config(self):
+        return super().get_config()
+
+    def update_state(self, *args, **kwargs):
+        raise NotImplementedError
+
+    def result(self):
+        raise NotImplementedError
+
+
+class DiceMetric(__Metric):
+    def __init__(self, batch_size=1, name='dice', **kwargs):
         super(DiceMetric, self).__init__(name=name, **kwargs)
         self.batch_size = batch_size
         self.total_dice = self.add_weight(name='dice_value', initializer='zeros')
@@ -20,8 +34,8 @@ class DiceMetric(Metric):
         return self.total_dice / self.num_batches
 
 
-class ClassWiseDiceMetric(Metric):
-    def __init__(self, batch_size, i, name='c_dice', **kwargs):
+class ClassWiseDiceMetric(__Metric):
+    def __init__(self, batch_size=1, i=0, name='c_dice', **kwargs):
         super(ClassWiseDiceMetric, self).__init__(name=name, **kwargs)
         self.batch_size = batch_size
         self.i = i

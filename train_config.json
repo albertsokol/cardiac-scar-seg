@@ -1,11 +1,11 @@
 {
-  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/experiment",
+  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/mini",
   "data_path": "/media/y4tsu/ml_data/cmr/",
   "mode": "train",
   "model": "UNet3D",
   "slice_20": true,
   "plane": "transverse",
-  "num_epochs": 200,
+  "num_epochs": 1,
   "batch_size": 4,
   "image_size": [160, 128, 16],
   "learning_rate": 3e-2,

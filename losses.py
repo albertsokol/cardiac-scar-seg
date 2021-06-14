@@ -11,6 +11,9 @@ class __Loss(Loss):
         self.batch_size = batch_size
         self.num_vox = reduce(lambda x, y: x * y, image_size, 1)
 
+    def get_config(self):
+        return super().get_config()
+
     def call(self, *args, **kwargs):
         raise NotImplementedError
 
