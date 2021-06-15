@@ -139,24 +139,23 @@ class NPYReader(FileReader):
 
 
 if __name__ == '__main__':
-    reader = NIIReader()
-
+    pass
     # Save all 3D as 2D numpy arrays in each plane to allow shuffled loading during 2D training
-    for g in ['train', 'val', 'test']:
-        for t in ['image', 'label']:
-            image_fnames = [
-                os.path.join('/media/y4tsu/ml_data/cmr/3d/', g, t, x)
-                for x in sorted(os.listdir(f'/media/y4tsu/ml_data/cmr/3d/{g}/{t}'))
-            ]
-
-            for i, name in enumerate(tqdm(image_fnames)):
-                img = reader.read(name)
-                for j in range(img.shape[0]):
-                    np.save(f'/media/y4tsu/ml_data/cmr/2d/{g}/coronal/{t}/{i}_coronal_{j}', img[j, :, :])
-                    x = np.load(f'/media/y4tsu/ml_data/cmr/2d/{g}/coronal/{t}/{i}_coronal_{j}.npy')
-                for j in range(img.shape[1]):
-                    np.save(f'/media/y4tsu/ml_data/cmr/2d/{g}/sagittal/{t}/{i}_sagittal_{j}', img[:, j, :])
-                    x = np.load(f'/media/y4tsu/ml_data/cmr/2d/{g}/sagittal/{t}/{i}_sagittal_{j}.npy')
-                for j in range(img.shape[2]):
-                    np.save(f'/media/y4tsu/ml_data/cmr/2d/{g}/transverse/{t}/{i}_transverse_{j}', img[:, :, j])
-                    x = np.load(f'/media/y4tsu/ml_data/cmr/2d/{g}/transverse/{t}/{i}_transverse_{j}.npy')
+    # for g in ['train', 'val', 'test']:
+    #     for t in ['image', 'label']:
+    #         image_fnames = [
+    #             os.path.join('/media/y4tsu/ml_data/cmr/3d/', g, t, x)
+    #             for x in sorted(os.listdir(f'/media/y4tsu/ml_data/cmr/3d/{g}/{t}'))
+    #         ]
+    #
+    #         for i, name in enumerate(tqdm(image_fnames)):
+    #             img = reader.read(name)
+    #             for j in range(img.shape[0]):
+    #                 np.save(f'/media/y4tsu/ml_data/cmr/2d/{g}/coronal/{t}/{i}_coronal_{j}', img[j, :, :])
+    #                 x = np.load(f'/media/y4tsu/ml_data/cmr/2d/{g}/coronal/{t}/{i}_coronal_{j}.npy')
+    #             for j in range(img.shape[1]):
+    #                 np.save(f'/media/y4tsu/ml_data/cmr/2d/{g}/sagittal/{t}/{i}_sagittal_{j}', img[:, j, :])
+    #                 x = np.load(f'/media/y4tsu/ml_data/cmr/2d/{g}/sagittal/{t}/{i}_sagittal_{j}.npy')
+    #             for j in range(img.shape[2]):
+    #                 np.save(f'/media/y4tsu/ml_data/cmr/2d/{g}/transverse/{t}/{i}_transverse_{j}', img[:, :, j])
+    #                 x = np.load(f'/media/y4tsu/ml_data/cmr/2d/{g}/transverse/{t}/{i}_transverse_{j}.npy')

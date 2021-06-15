@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from tensorflow.keras.utils import plot_model
 
-from augmenter import Augmenter
+from augmenter import Augmenter3D, Augmenter2D
 from callbacks import LearningRateFinder, LearningRatePrinter
 from generators import Generator3D, Generator2D
 from losses import SoftmaxLoss, WeightedSoftmaxLoss, DiceLoss, WeightedSoftmaxDiceLoss
@@ -29,8 +29,10 @@ class Trainer:
             self.dimensionality = '3D'
             print(f'plane and slice_20 ignored since using 3D model: {model}')
             plane = ""
+            self.augmenter = Augmenter3D(**augmentation)
         else:
             self.dimensionality = '2D'
+            self.augmenter = Augmenter2D(**augmentation)
             assert plane in ["transverse", "sagittal", "coronal"], "Plane must be one of: 'transverse', 'sagittal', 'coronal'"
         self.train_image_path = os.path.join(data_path, self.dimensionality, 'train', plane, 'image')
         self.train_label_path = os.path.join(data_path, self.dimensionality, 'train', plane, 'label')
@@ -80,8 +82,7 @@ class Trainer:
         }
         assert loss_fn in loss_dict, f'loss function {loss_fn}, not recognised, please pick one of: {loss_dict}'
 
-        # Set up generator and augmentation etc.
-        self.augmenter = Augmenter(**augmentation)
+        # Set up generators
         self.train_gen = self.gen_dict[self.dimensionality](
             self.train_image_path,
             self.train_label_path,

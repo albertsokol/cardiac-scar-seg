@@ -20,6 +20,7 @@ class Predictor:
         }
 
         assert pipeline in ["single", "cascaded", "multi2D"], f"pipeline type {pipeline} not recognised"
+        self.pipeline = pipeline
 
         self.image_size = None
         self.model_name = None
@@ -108,8 +109,14 @@ class Predictor:
 
     def predict(self, fname=None):
         image, label = self.load_image_label(fname)
-        pred_label = self.model.predict(image)
-        self.display(image, label, pred_label)
+        # This might be too much customisation for nothing tbh
+        if self.pipeline == "single":
+            pred_label = self.model.predict(image)
+            self.display(image, label, pred_label)
+        elif self.pipeline == "cascaded":
+            pass
+        elif self.pipeline == "multi2d":
+            pass
 
 
 if __name__ == '__main__':

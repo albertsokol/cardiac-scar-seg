@@ -110,3 +110,23 @@ class Generator2D(__Generator):
         super().__init__(image_path, label_path, batch_size, image_size, labels, shuffle, augmenter)
         self.reader = NPYReader()
 
+
+class __PipelineGenerator(Sequence):
+    def __init__(self):
+        pass
+
+    def __len__(self):
+        raise NotImplementedError
+
+    def __getitem__(self, item):
+        raise NotImplementedError
+
+
+class PipelineGenerator3D(__PipelineGenerator):
+    def __init__(self):
+        super().__init__()
+
+
+class PipelineGenerator2D(__PipelineGenerator):
+    def __init__(self):
+        super().__init__()
