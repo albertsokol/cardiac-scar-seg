@@ -8,13 +8,12 @@ from readers import NIIReader, NPYReader
 
 
 class __Generator(Sequence):
-    def __init__(self, image_path, label_path, batch_size, image_size, labels, shuffle, augmenter):
+    def __init__(self, data_path, batch_size, image_size, labels, shuffle, augmenter):
         # Set up image filenames and indexing
         self.augmenter = augmenter
-        self.image_path = image_path
-        self.label_path = label_path
-        self.image_fnames = [os.path.join(image_path, x) for x in sorted(os.listdir(image_path))]
-        self.label_fnames = [os.path.join(label_path, x) for x in sorted(os.listdir(label_path))]
+        self.data_path = data_path
+        self.image_fnames = [os.path.join(data_path, x, f'{x}_SAX.nii.gz') for x in sorted(os.listdir(data_path))]
+        self.label_fnames = [os.path.join(data_path, x, f'{x}_SAX_mask2.nii.gz') for x in sorted(os.listdir(data_path))]
         assert len(self.image_fnames) == len(self.label_fnames), "Number of image files and label files did not match!"
         self.index = np.arange(len(self.image_fnames))
 
@@ -85,13 +84,7 @@ class __Generator(Sequence):
         if label.shape != self.image_size:
             label = self.reader.resize(label, self.image_size, interpolation_order=0)
 
-        # Any labels which should not be included will be set as background here - just hack for now until RV sorted
-        if len(self.labels) != 5:
-            key_ints = [int(x) for x in list(self.labels.keys())]
-            label = np.where(np.isin(label, key_ints), label, 0.)
-            label = np.where(label == 2., 1., label)
-            label = np.where(label == 3., 2., label)
-            label = np.where(label == 4., 3., label)
+        # Consider adding a bit here to collapse a few of the labels down if needed for good performance
 
         # One hot encode the labels to create a new channel for each label and save as int8 to save space
         return one_hot(label, len(self.labels), dtype=np.int8).numpy()
@@ -99,15 +92,15 @@ class __Generator(Sequence):
 
 class Generator3D(__Generator):
     """ Class for the 3D image and label generator. """
-    def __init__(self, image_path, label_path, batch_size, image_size, labels, slice_20, shuffle=True, augmenter=None):
-        super().__init__(image_path, label_path, batch_size, image_size, labels, shuffle, augmenter)
-        self.reader = NIIReader(slice_20=slice_20)
+    def __init__(self, data_path, batch_size, image_size, labels, shuffle=True, augmenter=None):
+        super().__init__(data_path, batch_size, image_size, labels, shuffle, augmenter)
+        self.reader = NIIReader()
 
 
 class Generator2D(__Generator):
     """ Class for the 2D image and label generator. """
-    def __init__(self, image_path, label_path, batch_size, image_size, labels, slice_20, shuffle=True, augmenter=None):
-        super().__init__(image_path, label_path, batch_size, image_size, labels, shuffle, augmenter)
+    def __init__(self, data_path, batch_size, image_size, labels, shuffle=True, augmenter=None):
+        super().__init__(data_path, batch_size, image_size, labels, shuffle, augmenter)
         self.reader = NPYReader()
 
 

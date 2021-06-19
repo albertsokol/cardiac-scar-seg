@@ -18,7 +18,7 @@ from models import UNet3D, UNet2D
 class Trainer:
     """ Trainer class for training models. """
 
-    def __init__(self, model_save_path, data_path, mode, model, slice_20, plane, num_epochs, batch_size, image_size,
+    def __init__(self, model_save_path, data_path, mode, model, plane, num_epochs, batch_size, image_size,
                  learning_rate, lr_decay, warmup, labels, loss_fn, augmentation):
         """
         Initializer for Trainer.
@@ -34,12 +34,10 @@ class Trainer:
             self.dimensionality = '2D'
             self.augmenter = Augmenter2D(**augmentation)
             assert plane in ["transverse", "sagittal", "coronal"], "Plane must be one of: 'transverse', 'sagittal', 'coronal'"
-        self.train_image_path = os.path.join(data_path, self.dimensionality, 'train', plane, 'image')
-        self.train_label_path = os.path.join(data_path, self.dimensionality, 'train', plane, 'label')
-        self.val_image_path = os.path.join(data_path, self.dimensionality, 'val', plane, 'image')
-        self.val_label_path = os.path.join(data_path, self.dimensionality, 'val', plane, 'label')
-        self.test_image_path = os.path.join(data_path, self.dimensionality, 'test', plane, 'image')
-        self.test_label_path = os.path.join(data_path, self.dimensionality, 'test', plane, 'label')
+
+        self.train_data_path = os.path.join(data_path, self.dimensionality, 'train', plane)
+        self.val_data_path = os.path.join(data_path, self.dimensionality, 'val', plane)
+        self.test_data_path = os.path.join(data_path, self.dimensionality, 'test', plane)
 
         self.model_dict = {
             "UNet3D": UNet3D,
@@ -84,21 +82,17 @@ class Trainer:
 
         # Set up generators
         self.train_gen = self.gen_dict[self.dimensionality](
-            self.train_image_path,
-            self.train_label_path,
+            self.train_data_path,
             batch_size,
             image_size,
             labels,
-            slice_20=slice_20,
             augmenter=self.augmenter
         )
         self.val_gen = self.gen_dict[self.dimensionality](
-            self.val_image_path,
-            self.val_label_path,
+            self.val_data_path,
             batch_size,
             image_size,
             labels,
-            slice_20=slice_20,
             shuffle=False
         )
 
@@ -235,8 +229,8 @@ class Trainer:
         # TODO: assertions on all config stuff to prevent naughty values being given
         # TODO: combine lv myo labels + scar labels -> LV myo for first stage of cascaded nets
         # TODO: end-to-end or separately trained?
-        # TODO: 2D augmenter
         # TODO: check predictions using saved models
+        # TODO: prepare the byoooeeeteeful new data 
 
         # Learning rate decay: will be used if not 0, otherwise use static LR
         if self.lr_decay:

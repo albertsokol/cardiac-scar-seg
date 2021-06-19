@@ -80,14 +80,8 @@ class FileReader:
 
 class NIIReader(FileReader):
     """ Class for reading MRI images in .nii file format. """
-    def __init__(self, slice_20=True):
-        """
-
-        :param slice_20: bool: take only every 20th slice along the sagittal plane as these are just interpolated
-                               in the original dataset
-        """
+    def __init__(self):
         super().__init__()
-        self.slice_20 = slice_20
 
     @staticmethod
     def resize(img, dims=None, magnify=None, interpolation_order=3):
@@ -116,10 +110,7 @@ class NIIReader(FileReader):
 
     def read(self, f):
         """ Load the image using nibabel and convert to numpy array. """
-        if self.slice_20:
-            return self.numpy(nib.load(f, mmap=False))[:, :, ::20]
-        else:
-            return self.numpy(nib.load(f, mmap=False))
+        return np.squeeze(self.numpy(nib.load(f, mmap=False)))
 
 
 class NPYReader(FileReader):
@@ -139,7 +130,36 @@ class NPYReader(FileReader):
 
 
 if __name__ == '__main__':
-    pass
+    reader = NIIReader()
+    base_folder = '/media/y4tsu/ml_data/cmr/new/'
+
+    roots = sorted(os.listdir(base_folder))
+    ax_thickness = []
+    hw = []
+    squares = 0
+    print(f'{len(roots)} total scans found')
+
+    for i, root in enumerate(roots):
+        image = np.squeeze(reader.read(os.path.join(base_folder, root, f'{root}_SAX.nii.gz')))
+        shape = image.shape
+        label = np.squeeze(reader.read(os.path.join(base_folder, root, 'Assessor 2', f'{root}_SAX_mask2.nii.gz')))
+        # curr_top_sum = np.sum(image[:10, :, :])
+        # plt.imshow(image[:10, :, 0])
+        # plt.show()
+        # print(curr_top_sum)
+        # if curr_top_sum < 10_000:
+        #     print(i)
+        reader.scroll_view(label)
+        hw += [shape[0]]
+        ax_thickness += [shape[2]]
+        squares += 1 if shape[0] == shape[1] else 0
+
+    print(f'num squares: {squares}')
+    fig, axs = plt.subplots(2, 1)
+    axs[0].hist(ax_thickness)
+    axs[1].hist(hw)
+    plt.show()
+
     # Save all 3D as 2D numpy arrays in each plane to allow shuffled loading during 2D training
     # for g in ['train', 'val', 'test']:
     #     for t in ['image', 'label']:

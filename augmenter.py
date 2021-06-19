@@ -337,23 +337,6 @@ class Augmenter3D(__Augmenter):
 
         return out
 
-    def apply_brightness(self, img):
-        """ Apply brightness augmentations. Note that this only needs to be done for the image, and not the label. """
-        # Apply brightness change disproportionately; changing only dark values to prevent changing the blacks to make
-        # it harder for the model to understand the bounds of the image
-        polarity = -1 if self.rng.uniform() < 0.5 else 1
-        brightness_factor = 1 - polarity * self.rng.uniform(0, self.brightness)
-        return img ** brightness_factor
-
-    @staticmethod
-    def apply_deform(img, label):
-        """ Apply B-spline deformation to an image and label simultaneously - the same transform applies to both. """
-        # Note that the image and label must be the same size in order to use this
-        assert img.shape == label.shape, \
-            f'Image and label must be the same shape but got image: {img.shape}, label: {label.shape}'
-        img, label = elasticdeform.deform_random_grid([img, label], sigma=img.shape[0] / 500., points=10, order=[3, 0])
-        return img, label
-
 
 # if __name__ == '__main__':
 #     from readers import NPYReader
