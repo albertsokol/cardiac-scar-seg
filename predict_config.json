@@ -1,6 +1,6 @@
 {
   "pipeline": "single",
-  "model_paths": ["/home/y4tsu/PycharmProjects/3d_unet/checkpoint/experiment"],
+  "model_paths": ["/home/y4tsu/PycharmProjects/3d_unet/checkpoint/mini"],
   "data_path": "/media/y4tsu/ml_data/cmr",
-  "dataset": "train"
+  "dataset": "val"
 }

@@ -230,7 +230,7 @@ class Trainer:
         # TODO: combine lv myo labels + scar labels -> LV myo for first stage of cascaded nets
         # TODO: end-to-end or separately trained?
         # TODO: check predictions using saved models
-        # TODO: prepare the byoooeeeteeful new data 
+        # TODO: create 2D slices
 
         # Learning rate decay: will be used if not 0, otherwise use static LR
         if self.lr_decay:

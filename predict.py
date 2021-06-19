@@ -8,6 +8,16 @@ from metrics import DiceMetric, ClassWiseDiceMetric
 from readers import NIIReader, NPYReader
 
 
+def np_dice_coefficient(seg_gt, seg_pred):
+    """ Computes the dice coefficient between gt and predicted segmentations using numpy rather than Keras. """
+    numerator = 2 * np.sum(seg_gt * seg_pred)
+    denominator = np.sum(seg_gt ** 2) + np.sum(seg_pred ** 2)
+
+    _dice = numerator / denominator
+
+    return _dice
+
+
 class Predictor:
     def __init__(self, pipeline, model_paths, data_path, dataset):
         self.rng = np.random.default_rng()
@@ -36,10 +46,9 @@ class Predictor:
         self.data_path = data_path
         assert dataset in ["train", "val", "test"], f"dataset must be one of: 'train', 'val', 'test'; but got {dataset}"
         self.dataset = dataset
-        self.image_path = os.path.join(self.data_path, self.dims, self.dataset, 'image')
-        self.label_path = os.path.join(self.data_path, self.dims, self.dataset, 'label')
-        self.image_fnames = sorted(os.listdir(self.image_path))
-        self.label_fnames = sorted(os.listdir(self.label_path))
+        self.data_path = os.path.join(data_path, self.dims, self.dataset)
+        self.image_fnames = [os.path.join(self.data_path, x, f'{x}_SAX.nii.gz') for x in sorted(os.listdir(self.data_path))]
+        self.label_fnames = [os.path.join(self.data_path, x, f'{x}_SAX_mask2.nii.gz') for x in sorted(os.listdir(self.data_path))]
 
     def load_model(self, model_path):
         """ Loads the pretrained model and config. """
@@ -53,7 +62,7 @@ class Predictor:
         # Make sure that the correct readers and data are loaded for the given config / dimensionality
         if self.model_name in ['UNet3D']:
             self.dims = '3D'
-            self.reader = NIIReader(slice_20=train_config['slice_20'])
+            self.reader = NIIReader()
         else:
             plane = train_config['plane']
             self.dims = '2D'
@@ -74,10 +83,9 @@ class Predictor:
         """ Loads the image and label files. """
         # Define paths
         if fname is None:
-            fname = self.image_fnames[self.rng.integers(0, len(self.image_fnames))]
-        stem = fname[3:]
-        image_path = os.path.join(self.image_path, fname)
-        label_path = os.path.join(self.label_path, f'scr{stem}')
+            idx = self.rng.integers(0, len(self.image_fnames))
+            image_path = self.image_fnames[idx]
+            label_path = self.label_fnames[idx]
 
         # Load image and label
         image = self.reader.read(image_path)
@@ -88,6 +96,8 @@ class Predictor:
             image = self.reader.resize(image, self.image_size)
         if label.shape != self.image_size:
             label = self.reader.resize(label, self.image_size, interpolation_order=0)
+
+        image = self.reader.normalize(image)
 
         # Set to the correct rank
         image = image[np.newaxis, ..., np.newaxis]
@@ -104,6 +114,8 @@ class Predictor:
         # Set all arrays to the same shape and rank
         image = np.squeeze(image)
         pred_label = np.squeeze(np.argmax(pred_label, axis=-1))
+        print(pred_label.shape)
+        print(np_dice_coefficient(label, pred_label))
 
         self.reader.scroll_view(np.concatenate((label, pred_label)), plane=plane)
 
