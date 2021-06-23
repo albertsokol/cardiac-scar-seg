@@ -1,14 +1,14 @@
 {
-  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/mini",
+  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/2D",
   "data_path": "/media/y4tsu/ml_data/cmr/",
   "mode": "train",
-  "model": "UNet3D",
+  "model": "UNet2D",
   "plane": "transverse",
-  "num_epochs": 100,
-  "batch_size": 1,
-  "image_size": [160, 160, 16],
+  "num_epochs": 150,
+  "batch_size": 32,
+  "image_size": [160, 160],
   "learning_rate": 5e-2,
-  "lr_decay": 0.5,
+  "lr_decay": 0.35,
   "warmup": false,
   "loss_fn": "weighted softmax",
   "labels": {
@@ -18,7 +18,7 @@
     "3": "scar",
     "4": "rv lumen",
     "5": "rv myo",
-    "6": "valves",
+    "6": "pap",
     "7": "aorta"
   },
   "augmentation": {

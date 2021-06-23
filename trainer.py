@@ -115,6 +115,7 @@ class Trainer:
         print(f'Calculating label weightings across {len(self.train_gen.image_fnames)} label images for use in loss'
               f' function, may take a while ... ')
         for i in tqdm(range(len(self.train_gen.image_fnames) // self.batch_size)):
+            # print(self.train_gen.image_fnames[i])
             _, label_img = self.train_gen.__getitem__(i, weight_mode=True)
             # Get the number of labelled voxels of each class for each label image
             sums += [label_img[..., j].sum() for j in range(len(self.labels))]
@@ -170,8 +171,8 @@ class Trainer:
         axs[0, 1].set(xlabel='epochs', ylabel='dice coefficient')
         axs[0, 1].legend(loc="lower right")
 
-        if len(self.labels) > 5:
-            colors = ['red'] * len(self.labels)
+        if len(self.labels) > 8:
+            colors = ['red'] * (len(self.labels) * 2)
         else:
             colors = [
                 'darkorange',
@@ -183,7 +184,13 @@ class Trainer:
                 'purple',
                 'darkorchid',
                 'maroon',
-                'crimson'
+                'crimson',
+                'green',
+                'limegreen',
+                'deeppink',
+                'hotpink',
+                'navy',
+                'mediumblue'
             ]
 
         i = 0
@@ -227,10 +234,11 @@ class Trainer:
         # TODO: implement other models
         # TODO: test UNet2D
         # TODO: assertions on all config stuff to prevent naughty values being given
-        # TODO: combine lv myo labels + scar labels -> LV myo for first stage of cascaded nets
+        # TODO: combine labels for simpler learning task?
         # TODO: end-to-end or separately trained?
         # TODO: check predictions using saved models
         # TODO: create 2D slices
+        # TODO: maintain aspect ratio resize by just adding black to the image around the scan
 
         # Learning rate decay: will be used if not 0, otherwise use static LR
         if self.lr_decay:
