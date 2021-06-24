@@ -237,7 +237,6 @@ class Trainer:
         # TODO: combine labels for simpler learning task?
         # TODO: end-to-end or separately trained?
         # TODO: check predictions using saved models
-        # TODO: create 2D slices
         # TODO: maintain aspect ratio resize by just adding black to the image around the scan
 
         # Learning rate decay: will be used if not 0, otherwise use static LR

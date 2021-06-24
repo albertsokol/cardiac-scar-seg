@@ -2,6 +2,7 @@ import os
 
 import nibabel as nib
 import numpy as np
+import cv2
 from matplotlib import pyplot as plt
 from scipy.ndimage import zoom
 from skimage.transform import resize
@@ -122,7 +123,10 @@ class NPYReader(FileReader):
     def resize(img, dims, interpolation_order=3):
         """ Resize the 2D image to the given dimensions. """
         assert type(img) == np.ndarray, 'image must be a numpy array to resize.'
-        return resize(img, dims, order=interpolation_order)
+        if interpolation_order == 3:
+            return cv2.resize(img, tuple(dims), interpolation=cv2.INTER_CUBIC)
+        elif interpolation_order == 0:
+            return cv2.resize(img, tuple(dims), interpolation=cv2.INTER_NEAREST)
 
     def read(self, f):
         """ Load the image using numpy. """
@@ -176,11 +180,11 @@ if __name__ == '__main__':
             os.mkdir(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}')
 
             for j in range(image.shape[0]):
-                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/coronal/{x}/{x}_{j}_image', image[j, :, :])
-                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/coronal/{x}/{x}_{j}_label', label[j, :, :])
+                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/coronal/{x}/{x}_{j:03}_image', image[j, :, :])
+                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/coronal/{x}/{x}_{j:03}_label', label[j, :, :])
             for j in range(image.shape[1]):
-                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/sagittal/{x}/{x}_{j}_image', image[:, j, :])
-                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/sagittal/{x}/{x}_{j}_label', label[:, j, :])
+                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/sagittal/{x}/{x}_{j:03}_image', image[:, j, :])
+                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/sagittal/{x}/{x}_{j:03}_label', label[:, j, :])
             for j in range(image.shape[2]):
-                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}/{x}_{j}_image', image[:, :, j])
-                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}/{x}_{j}_label', label[:, :, j])
+                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}/{x}_{j:03}_image', image[:, :, j])
+                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}/{x}_{j:03}_label', label[:, :, j])
