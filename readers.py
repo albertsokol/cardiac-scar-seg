@@ -73,7 +73,10 @@ class FileReader:
     @staticmethod
     def normalize(img):
         """ Normalize voxel values to be within 0 to 1 range. """
-        return (img - np.min(img)) / (np.max(img) - np.min(img))
+        normalized = (img - np.min(img)) / (np.max(img) - np.min(img))
+        if np.isnan(np.max(normalized)):
+            return np.zeros(img.shape)
+        return normalized
 
     def read(self, f):
         raise NotImplementedError
@@ -124,9 +127,9 @@ class NPYReader(FileReader):
         """ Resize the 2D image to the given dimensions. """
         assert type(img) == np.ndarray, 'image must be a numpy array to resize.'
         if interpolation_order == 3:
-            return cv2.resize(img, tuple(dims), interpolation=cv2.INTER_CUBIC)
+            return cv2.resize(img, tuple(reversed(dims)), interpolation=cv2.INTER_CUBIC)
         elif interpolation_order == 0:
-            return cv2.resize(img, tuple(dims), interpolation=cv2.INTER_NEAREST)
+            return cv2.resize(img, tuple(reversed(dims)), interpolation=cv2.INTER_NEAREST)
 
     def read(self, f):
         """ Load the image using numpy. """

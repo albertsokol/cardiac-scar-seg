@@ -4,7 +4,6 @@ import tensorflow as tf
 import numpy as np
 import matplotlib.pyplot as plt
 
-from losses import SoftmaxLoss, DiceLoss, WeightedSoftmaxDiceLoss, WeightedSoftmaxLoss
 from metrics import DiceMetric, ClassWiseDiceMetric
 from readers import NIIReader, NPYReader
 
@@ -22,13 +21,6 @@ def np_dice_coefficient(seg_gt, seg_pred):
 class __Predictor:
     def __init__(self, data_path, dataset):
         self.rng = np.random.default_rng()
-
-        self.loss_dict = {
-            'softmax': SoftmaxLoss,
-            'weighted softmax': WeightedSoftmaxLoss,
-            'dice': DiceLoss,
-            'weighted softmax dice': WeightedSoftmaxDiceLoss
-        }
 
         self.image_size = None
         self.model_name = None
@@ -152,6 +144,9 @@ class Predictor2D(__Predictor):
             idx = self.rng.integers(0, len(self.image_fnames))
             image_folder = self.image_fnames[idx]
             label_folder = self.label_fnames[idx]
+        else:
+            image_folder = fname
+            label_folder = fname
 
         # Load image and label
         image_paths = [os.path.join(self.data_path, image_folder, x)
@@ -187,11 +182,9 @@ class Predictor2D(__Predictor):
         """
         # TODO: also look @ the pred label on image, pred label on label, label on image in same view
         # Set all arrays to the same shape and rank
-        print(np_dice_coefficient(label, pred_label))
-
         self.reader.scroll_view(np.concatenate((label, pred_label)), plane=plane)
 
-    def predict(self, fname=None):
+    def predict(self, fname=None, display=True):
         images, labels = self.load_image_label(fname)
         pred_label = np.empty(images.shape[:-1], dtype=np.int8)
 
@@ -203,7 +196,12 @@ class Predictor2D(__Predictor):
         label = np.moveaxis(labels, [0, 1, 2], [2, 0, 1])
         pred_label = np.moveaxis(pred_label, [0, 1, 2], [2, 0, 1])
 
-        self.display(image, label, pred_label)
+        print(np_dice_coefficient(label, pred_label))
+
+        if display:
+            self.display(image, label, pred_label)
+
+        return image, label, pred_label
 
 
 if __name__ == '__main__':

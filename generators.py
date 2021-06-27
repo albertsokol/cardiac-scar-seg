@@ -102,13 +102,13 @@ class Generator2D(__Generator):
     def __init__(self, data_path, batch_size, image_size, labels, shuffle=True, augmenter=None):
         super().__init__(data_path, batch_size, image_size, labels, shuffle, augmenter)
         self.image_fnames = [
-            [os.path.join(data_path, x, f'{x}_{i}_image.npy')
+            [os.path.join(data_path, x, f'{x}_{i:03}_image.npy')
              for i in range(len(sorted(os.listdir(os.path.join(data_path, x)))) // 2)]
             for x in sorted(os.listdir(data_path))
         ]
         self.image_fnames = [x for y in self.image_fnames for x in y]
         self.label_fnames = [
-            [os.path.join(data_path, x, f'{x}_{i}_label.npy')
+            [os.path.join(data_path, x, f'{x}_{i:03}_label.npy')
              for i in range(len(sorted(os.listdir(os.path.join(data_path, x)))) // 2)]
             for x in sorted(os.listdir(data_path))
         ]

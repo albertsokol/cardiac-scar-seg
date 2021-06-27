@@ -25,7 +25,10 @@ class __Augmenter(ABC):
     @staticmethod
     def normalize(img):
         """ Normalize voxel values to be within 0 to 1 range. """
-        return (img - np.min(img)) / (np.max(img) - np.min(img))
+        normalized = (img - np.min(img)) / (np.max(img) - np.min(img))
+        if np.isnan(np.max(normalized)):
+            return np.zeros(img.shape)
+        return normalized
 
     def apply_brightness(self, img):
         """ Apply brightness augmentations. Note that this only needs to be done for the image, and not the label. """
@@ -55,8 +58,8 @@ class Augmenter2D(__Augmenter):
         """ Simultaneously augment the image and label together. Both must be numpy arrays. """
         assert type(img) == np.ndarray, f'Image must be a numpy array but type {type(img)} was given'
         assert type(label) == np.ndarray, f'Label must be a numpy array but type {type(label)} was given'
-        assert np.max(
-            img) == 1., f'Image must be normalized before augmentation, but max value was not 1. - got {np.max(img)}'
+        assert np.max(img) == 1. or np.max(img) == 0., f'Image must be normalized before augmentation, ' \
+                                                       f'but max value was not 1. - got {np.max(img)}'
         assert np.min(
             img) == 0., f'Image must be normalized before augmentation, but min value was not 0. - got {np.min(img)}'
 
