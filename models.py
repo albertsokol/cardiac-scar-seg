@@ -38,7 +38,7 @@ class UNet3D(SegModel3D):
         super().__init__(input_size, output_length, kernel_size, conv3d_transpose_kernel_size)
 
     def down_conv_block(self, m, filters_a, filters_b):
-        """ 3D down-convolution block generic to all models? We'll see ... """
+        """ 3D down-convolution block. """
         m = layers.Conv3D(filters_a, self.kernel_size, padding='same', activation='relu')(m)
         m = layers.BatchNormalization()(m)
 
@@ -88,7 +88,77 @@ class UNet3D(SegModel3D):
         uconv1 = self.up_conv_block(uconv2, conv1, 256, 128)
         uconv0 = self.up_conv_block(uconv1, conv0, 128, 64)
 
-        out = layers.Conv3D(self.output_length, (1, 1, 1), padding='same', activation='softmax')(uconv0)
+        out = layers.Conv3D(self.output_length, (1, 1, 1), padding='same', activation=None)(uconv0)
+        out = layers.Activation('softmax')(out)
+
+        return out
+
+    def create_model(self):
+        """ Create a Model object which can be used for training. """
+        # Input is the 3D volume size plus a dimension representing the channels
+        model_input = layers.Input((self.input_size[0], self.input_size[1], self.input_size[2], 1))
+
+        return models.Model(inputs=model_input, outputs=self.define_architecture(model_input))
+
+
+class UNet3DShallow(SegModel3D):
+    """ Implementation of shallow UNet-3D as per Fahmy et al's 2019 paper: https://pubs.rsna.org/doi/10.1148/radiol.2019190737 """
+    def __init__(self, input_size, output_length, kernel_size=(3, 3, 3), conv3d_transpose_kernel_size=(2, 2, 2)):
+        super().__init__(input_size, output_length, kernel_size, conv3d_transpose_kernel_size)
+
+    def down_conv_block(self, m, filters_a, filters_b):
+        """ 3D down-convolution block. """
+        m = layers.Conv3D(filters_a, self.kernel_size, padding='same', activation='relu')(m)
+        m = layers.BatchNormalization()(m)
+
+        m = layers.Conv3D(filters_b, self.kernel_size, padding='same', activation='relu')(m)
+        m = layers.BatchNormalization()(m)
+
+        return m
+
+    def up_conv_block(self, m, prev, filters_a, filters_b):
+        """ 3D up-convolution block. """
+        m = layers.Conv3DTranspose(
+            filters_a,
+            self.conv3d_transpose_kernel_size,
+            strides=(2, 2, 1),
+            padding='same',
+            activation='relu'
+        )(m)
+        m = layers.BatchNormalization()(m)
+
+        m = layers.Concatenate()([m, prev])
+
+        m = layers.Conv3D(filters_b, self.kernel_size, padding='same', activation='relu')(m)
+        m = layers.BatchNormalization()(m)
+
+        m = layers.Conv3D(filters_b, self.kernel_size, padding='same', activation='relu')(m)
+        m = layers.BatchNormalization()(m)
+
+        return m
+
+    def define_architecture(self, model_input):
+        """ Build the UNet-3D model. """
+        # Downsampling / encoding portion
+        conv0 = self.down_conv_block(model_input, 32, 64)
+        pool0 = layers.MaxPooling3D((2, 2, 2), strides=(2, 2, 1))(conv0)
+
+        conv1 = self.down_conv_block(pool0, 64, 128)
+        pool1 = layers.MaxPooling3D((2, 2, 2), strides=(2, 2, 1))(conv1)
+
+        conv2 = self.down_conv_block(pool1, 128, 256)
+        pool2 = layers.MaxPooling3D((2, 2, 2), strides=(2, 2, 1))(conv2)
+
+        # Middle of network
+        conv3 = self.down_conv_block(pool2, 256, 512)
+
+        # Upsampling / decoding portion
+        uconv2 = self.up_conv_block(conv3, conv2, 512, 256)
+        uconv1 = self.up_conv_block(uconv2, conv1, 256, 128)
+        uconv0 = self.up_conv_block(uconv1, conv0, 128, 64)
+
+        out = layers.Conv3D(self.output_length, (1, 1, 1), padding='same', activation=None)(uconv0)
+        out = layers.Activation('softmax')(out)
 
         return out
 
@@ -177,7 +247,8 @@ class UNet2D(SegModel2D):
         uconv1 = self.up_conv_block(uconv2, conv1, 128)
         uconv0 = self.up_conv_block(uconv1, conv0, 64)
 
-        out = layers.Conv2D(self.output_length, (1, 1), padding='same', activation='softmax')(uconv0)
+        out = layers.Conv2D(self.output_length, (1, 1), padding='same', activation=None)(uconv0)
+        out = layers.Activation('softmax')(out)
 
         return out
 

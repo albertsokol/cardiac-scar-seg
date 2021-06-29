@@ -191,3 +191,18 @@ if __name__ == '__main__':
             for j in range(image.shape[2]):
                 np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}/{x}_{j:03}_image', image[:, :, j])
                 np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}/{x}_{j:03}_label', label[:, :, j])
+
+    # Save all 3D as depth=3 slices to allow shuffled loading during training
+    # for g in ['train', 'val', 'test']:
+    #     for x in tqdm(sorted(os.listdir(f'/media/y4tsu/ml_data/cmr/3D/{g}/'))):
+    #         image_fname = os.path.join('/media/y4tsu/ml_data/cmr/3D/', g, x, f'{x}_SAX.nii.gz')
+    #         label_fname = os.path.join('/media/y4tsu/ml_data/cmr/3D/', g, x, f'{x}_SAX_mask2.nii.gz')
+    #
+    #         image = reader.read(image_fname)
+    #         label = reader.read(label_fname)
+    #
+    #         os.mkdir(f'/media/y4tsu/ml_data/cmr/3DShallow/{g}/transverse/{x}')
+    #
+    #         for j in range(image.shape[2] - 2):
+    #             np.save(f'/media/y4tsu/ml_data/cmr/3DShallow/{g}/transverse/{x}/{x}_{j:03}_image', image[:, :, j:j + 3])
+    #             np.save(f'/media/y4tsu/ml_data/cmr/3DShallow/{g}/transverse/{x}/{x}_{j:03}_label', label[:, :, j:j + 3])

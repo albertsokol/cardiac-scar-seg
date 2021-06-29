@@ -12,7 +12,7 @@ from callbacks import LearningRateFinder, LearningRatePrinter
 from generators import Generator3D, Generator2D
 from losses import SoftmaxLoss, WeightedSoftmaxLoss, DiceLoss, WeightedSoftmaxDiceLoss
 from metrics import DiceMetric, ClassWiseDiceMetric
-from models import UNet3D, UNet2D
+from models import UNet3D, UNet2D, UNet3DShallow
 
 
 class Trainer:
@@ -41,7 +41,8 @@ class Trainer:
 
         self.model_dict = {
             "UNet3D": UNet3D,
-            "UNet2D": UNet2D
+            "UNet2D": UNet2D,
+            "UNet3DShallow": UNet3DShallow
         }
         self.gen_dict = {
             "3D": Generator3D,
@@ -222,7 +223,11 @@ class Trainer:
 
     def train(self):
         """ Train the model. """
-        model = self.model_dict[self.model](input_size=self.image_size, output_length=len(self.labels)).create_model()
+        model = self.model_dict[self.model](
+            input_size=self.image_size,
+            output_length=len(self.labels)
+        ).create_model()
+
         # plot_model(model, 'UNet3Dplot.png', show_shapes=True)
         model.summary(line_length=160)
 

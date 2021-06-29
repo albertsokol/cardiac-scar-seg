@@ -27,6 +27,7 @@ class __Predictor:
         self.reader = None
         self.image_fnames = None
         self.label_fnames = None
+        self.labels_dict = None
 
         self.data_path = data_path
         assert dataset in ["train", "val", "test"], f"dataset must be one of: 'train', 'val', 'test'; but got {dataset}"
@@ -47,6 +48,7 @@ class Predictor3D(__Predictor):
         """ Loads the pretrained model and config. """
         self.model_name = train_config['model']
         self.image_size = train_config['image_size']
+        self.labels_dict = train_config['labels']
 
         # Make sure that the correct readers and data are loaded for the given config / dimensionality
         self.reader = NIIReader()
@@ -121,6 +123,7 @@ class Predictor2D(__Predictor):
         """ Loads the pretrained model and config. """
         self.model_name = train_config['model']
         self.image_size = train_config['image_size']
+        self.labels_dict = train_config['labels']
 
         # Make sure that the correct readers and data are loaded for the given config / dimensionality
         self.data_path = f'{self.data_path}/{train_config["plane"]}'
@@ -202,6 +205,24 @@ class Predictor2D(__Predictor):
             self.display(image, label, pred_label)
 
         return image, label, pred_label
+
+    def predict_logits(self, fname=None):
+        """Return logits only rather than the softmax output."""
+        images, labels = self.load_image_label(fname)
+        pred_logits = np.empty(list(images.shape[:-1]) + [len(self.labels_dict)], dtype=np.int8)
+
+        # Create a new model which pulls out the logits before the softmax activation at the end
+        pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=self.model.layers[-2].output)
+
+        for i in range(images.shape[0]):
+            curr_pred = pred_model.predict(images[i, np.newaxis, ...])
+            pred_logits[i, ...] = np.squeeze(curr_pred)
+
+        image = np.moveaxis(np.squeeze(images), [0, 1, 2], [2, 0, 1])
+        label = np.moveaxis(labels, [0, 1, 2], [2, 0, 1])
+        pred_logits = np.moveaxis(pred_logits, [0, 1, 2], [2, 0, 1])
+
+        return image, label, pred_logits
 
 
 if __name__ == '__main__':
