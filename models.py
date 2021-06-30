@@ -141,13 +141,13 @@ class UNet3DShallow(SegModel3D):
         """ Build the UNet-3D model. """
         # Downsampling / encoding portion
         conv0 = self.down_conv_block(model_input, 32, 64)
-        pool0 = layers.MaxPooling3D((2, 2, 2), strides=(2, 2, 1))(conv0)
+        pool0 = layers.MaxPooling3D((2, 2, 1), strides=(2, 2, 1))(conv0)
 
         conv1 = self.down_conv_block(pool0, 64, 128)
-        pool1 = layers.MaxPooling3D((2, 2, 2), strides=(2, 2, 1))(conv1)
+        pool1 = layers.MaxPooling3D((2, 2, 1), strides=(2, 2, 1))(conv1)
 
         conv2 = self.down_conv_block(pool1, 128, 256)
-        pool2 = layers.MaxPooling3D((2, 2, 2), strides=(2, 2, 1))(conv2)
+        pool2 = layers.MaxPooling3D((2, 2, 1), strides=(2, 2, 1))(conv2)
 
         # Middle of network
         conv3 = self.down_conv_block(pool2, 256, 512)

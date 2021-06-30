@@ -27,9 +27,13 @@ class Trainer:
         self.model_save_path = model_save_path
         if model in ['UNet3D']:
             self.dimensionality = '3D'
-            print(f'plane and slice_20 ignored since using 3D model: {model}')
+            print(f'plane ignored since using 3D model: {model}')
             plane = ""
             self.augmenter = Augmenter3D(**augmentation)
+        elif model in ['UNet3DShallow']:
+            self.dimensionality = '3DShallow'
+            self.augmenter = Augmenter3D(**augmentation)
+            assert plane in ["transverse", "sagittal", "coronal"], "Plane must be one of: 'transverse', 'sagittal', 'coronal'"
         else:
             self.dimensionality = '2D'
             self.augmenter = Augmenter2D(**augmentation)
@@ -41,12 +45,13 @@ class Trainer:
 
         self.model_dict = {
             "UNet3D": UNet3D,
+            "UNet3DShallow": UNet3DShallow,
             "UNet2D": UNet2D,
-            "UNet3DShallow": UNet3DShallow
         }
         self.gen_dict = {
             "3D": Generator3D,
-            "2D": Generator2D
+            "3DShallow": Generator2D,
+            "2D": Generator2D,
         }
 
         # Mode: "lrf" for learning rate finder, "train" for normal model training

@@ -104,7 +104,8 @@ class NIIReader(FileReader):
         if dims is not None and magnify is not None:
             raise AttributeError("Both dims and magnify cannot be selected - please specify only one")
         if dims is not None:
-            magnify = (dims[0] / img.shape[0], dims[1] / img.shape[1], dims[2] / img.shape[2])
+            # magnify = (dims[0] / img.shape[0], dims[1] / img.shape[1], dims[2] / img.shape[2])
+            magnify = tuple([x / y for x, y in zip(dims, img.shape)])
         return zoom(img, magnify, order=interpolation_order)
 
     @staticmethod
@@ -124,12 +125,18 @@ class NPYReader(FileReader):
 
     @staticmethod
     def resize(img, dims, interpolation_order=3):
-        """ Resize the 2D image to the given dimensions. """
+        """ Resize the image to the given dimensions. """
         assert type(img) == np.ndarray, 'image must be a numpy array to resize.'
-        if interpolation_order == 3:
-            return cv2.resize(img, tuple(reversed(dims)), interpolation=cv2.INTER_CUBIC)
-        elif interpolation_order == 0:
-            return cv2.resize(img, tuple(reversed(dims)), interpolation=cv2.INTER_NEAREST)
+        # If 2D then use open CV for resizing
+        if len(dims) == 2:
+            if interpolation_order == 3:
+                return cv2.resize(img, tuple(reversed(dims)), interpolation=cv2.INTER_CUBIC)
+            elif interpolation_order == 0:
+                return cv2.resize(img, tuple(reversed(dims)), interpolation=cv2.INTER_NEAREST)
+        # Otherwise use scipy zoom
+        else:
+            magnify = tuple([x / y for x, y in zip(dims, img.shape)])
+            return zoom(img, magnify, order=interpolation_order)
 
     def read(self, f):
         """ Load the image using numpy. """

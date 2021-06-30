@@ -1,5 +1,5 @@
 {
-  "model_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/experiment",
+  "model_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/shallow",
   "data_path": "/media/y4tsu/ml_data/cmr",
   "dataset": "val"
 }
