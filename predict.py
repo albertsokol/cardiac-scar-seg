@@ -9,16 +9,6 @@ from metrics import DiceMetric, ClassWiseDiceMetric
 from readers import NIIReader, NPYReader
 
 
-def np_dice_coefficient(seg_gt, seg_pred):
-    """ Computes the dice coefficient between gt and predicted segmentations using numpy rather than Keras. """
-    numerator = 2 * np.sum(seg_gt * seg_pred)
-    denominator = np.sum(seg_gt ** 2) + np.sum(seg_pred ** 2)
-
-    _dice = numerator / denominator
-
-    return _dice
-
-
 class __Predictor:
     def __init__(self, data_path, dataset):
         self.rng = np.random.default_rng()
@@ -33,6 +23,16 @@ class __Predictor:
         self.data_path = data_path
         assert dataset in ["train", "val", "test"], f"dataset must be one of: 'train', 'val', 'test'; but got {dataset}"
         self.dataset = dataset
+
+    def calculate_dice(self, y_true, y_pred):
+        """Computes dice coefficient between gt and predicted segmentations using numpy."""
+        y_true = tf.one_hot(y_true, len(self.labels_dict), dtype=np.int8).numpy()
+        y_pred = tf.one_hot(y_pred, len(self.labels_dict), dtype=np.int8).numpy()
+
+        numerator = 2 * np.sum(y_true * y_pred) + 1e-7
+        denominator = np.sum(y_true) + np.sum(y_pred) + 1e-7
+
+        return numerator / denominator
 
 
 class Predictor3D(__Predictor):
@@ -100,7 +100,6 @@ class Predictor3D(__Predictor):
         image = np.squeeze(image)
         pred_label = np.squeeze(np.argmax(pred_label, axis=-1))
         print(pred_label.shape)
-        print(np_dice_coefficient(label, pred_label))
 
         self.reader.scroll_view(np.concatenate((label, pred_label)), plane=plane)
 
@@ -197,7 +196,7 @@ class Predictor2D(__Predictor):
         label = np.moveaxis(labels, [0, 1, 2], [2, 0, 1])
         pred_label = np.moveaxis(pred_label, [0, 1, 2], [2, 0, 1])
 
-        print(np_dice_coefficient(label, pred_label))
+        print(self.calculate_dice(label, pred_label))
 
         if display:
             self.display(image, label, pred_label)
@@ -336,7 +335,41 @@ class Predictor3DShallow(__Predictor):
         )
         pred_label[..., -1] = np.argmax(softmax(pred_logits[-1][..., 2, :], axis=-1), axis=-1)
 
-        print(np_dice_coefficient(label, pred_label))
+        print(self.calculate_dice(label, pred_label))
+
+        self.display(image, label, pred_label)
+
+        return image, label, pred_label
+
+    def display(self, image, label, pred_label, plane='transverse'):
+        """
+        Should show the label vs. prediction, label vs. image and prediction vs. image in a single scrollable view.
+        """
+        self.reader.scroll_view(np.concatenate((label, pred_label)), plane=plane)
+
+
+class Predictor3DCascaded(Predictor3D):
+    def __init__(self, data_path, dataset, model_path, train_config):
+        super().__init__(data_path, dataset, model_path, train_config)
+
+    def predict(self, fname=None):
+        image, label = self.load_image_label(fname)
+        # Get the multiple outputs from the model
+        predictions = self.model.predict(image)
+
+        # Convert to the correct dimensionality and shift along to take all 8 values
+        general = np.squeeze(np.argmax(predictions[0], axis=-1))
+        general = np.where(np.greater_equal(general, 3), general + 1, general)
+        pred_label = np.where(np.equal(general, 6), 7, general)
+
+        # Add in scar predictions
+        pred_label = np.where(np.greater_equal(np.squeeze(predictions[1]), 0.5), 3, pred_label)
+
+        # And add in papillary muscle predictions
+        pred_label = np.where(np.greater_equal(np.squeeze(predictions[2]), 0.5), 6, pred_label)
+
+        print(self.calculate_dice(label, pred_label))
+
         self.display(image, label, pred_label)
 
         return image, label, pred_label
@@ -359,6 +392,8 @@ if __name__ == '__main__':
         p = Predictor3D(**predict_config, train_config=train_config)
     elif train_config['model'] in ['UNet3DShallow']:
         p = Predictor3DShallow(**predict_config, train_config=train_config)
+    elif train_config['model'] in ['CascadedUNet3D']:
+        p = Predictor3DCascaded(**predict_config, train_config=train_config)
     else:
         p = Predictor2D(**predict_config, train_config=train_config)
 
