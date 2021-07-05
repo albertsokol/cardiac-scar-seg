@@ -34,6 +34,24 @@ class __Predictor:
 
         return numerator / denominator
 
+    def calculate_class_wise_dice(self, y_true, y_pred):
+        """Computes dice coefficient for each class using numpy."""
+        y_true = tf.one_hot(y_true, len(self.labels_dict), dtype=np.int8).numpy()
+        y_pred = tf.one_hot(y_pred, len(self.labels_dict), dtype=np.int8).numpy()
+
+        dices = np.zeros([len(self.labels_dict)])
+
+        # Iterate over all the classes, getting the dice score
+        for i in range(len(self.labels_dict)):
+            numerator = 2 * np.sum(y_true[..., i] * y_pred[..., i]) + 1e-7
+            denominator = np.sum(y_true[..., i]) + np.sum(y_pred[..., i]) + 1e-7
+            dices[i] = numerator / denominator
+
+        return dices
+
+    def predict(self, fname=None, display=False):
+        raise NotImplementedError
+
 
 class Predictor3D(__Predictor):
     def __init__(self, data_path, dataset, model_path, train_config):
@@ -71,6 +89,9 @@ class Predictor3D(__Predictor):
             idx = self.rng.integers(0, len(self.image_fnames))
             image_path = self.image_fnames[idx]
             label_path = self.label_fnames[idx]
+        else:
+            image_path = os.path.join(fname, f'{fname.split("/")[-1]}_SAX.nii.gz')
+            label_path = os.path.join(fname, f'{fname.split("/")[-1]}_SAX_mask2.nii.gz')
 
         # Load image and label
         image = self.reader.read(image_path)
@@ -87,8 +108,6 @@ class Predictor3D(__Predictor):
         # Set to the correct rank
         image = image[np.newaxis, ..., np.newaxis]
 
-        print(f'Loaded image at {image_path}')
-        print(f'Loaded label at {label_path}')
         return image, label
 
     def display(self, image, label, pred_label, plane='transverse'):
@@ -98,15 +117,20 @@ class Predictor3D(__Predictor):
         # TODO: also look @ the pred label on image, pred label on label, label on image in same view
         # Set all arrays to the same shape and rank
         image = np.squeeze(image)
-        pred_label = np.squeeze(np.argmax(pred_label, axis=-1))
-        print(pred_label.shape)
 
         self.reader.scroll_view(np.concatenate((label, pred_label)), plane=plane)
 
-    def predict(self, fname=None):
+    def predict(self, fname=None, display=False):
         image, label = self.load_image_label(fname)
         pred_label = self.model.predict(image)
-        self.display(image, label, pred_label)
+        pred_label = np.squeeze(np.argmax(pred_label, axis=-1))
+
+        print(self.calculate_dice(label, pred_label))
+
+        if display:
+            self.display(image, label, pred_label)
+
+        return image, label, pred_label
 
 
 class Predictor2D(__Predictor):
@@ -184,7 +208,7 @@ class Predictor2D(__Predictor):
         # Set all arrays to the same shape and rank
         self.reader.scroll_view(np.concatenate((label, pred_label)), plane=plane)
 
-    def predict(self, fname=None, display=True):
+    def predict(self, fname=None, display=False):
         images, labels = self.load_image_label(fname)
         pred_label = np.empty(images.shape[:-1], dtype=np.int8)
 
@@ -290,11 +314,9 @@ class Predictor3DShallow(__Predictor):
 
         return images, labels
 
-    def predict(self, fname=None):
+    def predict(self, fname=None, display=False):
         """Return logits only rather than the softmax output."""
         images, labels = self.load_image_label(fname)
-        print([x.shape for x in images])
-        print([x.shape for x in labels])
         pred_logits = []
 
         # Create a new model which pulls out the logits before the softmax activation at the end
@@ -303,8 +325,6 @@ class Predictor3DShallow(__Predictor):
         for image in images:
             curr_pred = pred_model.predict(image[np.newaxis, ...])
             pred_logits += [np.squeeze(curr_pred)]
-
-        print([x.shape for x in pred_logits])
 
         # Turn these slices into an actual set of image, label and pred_labels
         image = np.empty([*self.image_size[:2], len(images) + 2], dtype=np.float32)
@@ -337,7 +357,8 @@ class Predictor3DShallow(__Predictor):
 
         print(self.calculate_dice(label, pred_label))
 
-        self.display(image, label, pred_label)
+        if display:
+            self.display(image, label, pred_label)
 
         return image, label, pred_label
 
@@ -352,7 +373,7 @@ class Predictor3DCascaded(Predictor3D):
     def __init__(self, data_path, dataset, model_path, train_config):
         super().__init__(data_path, dataset, model_path, train_config)
 
-    def predict(self, fname=None):
+    def predict(self, fname=None, display=False):
         image, label = self.load_image_label(fname)
         # Get the multiple outputs from the model
         predictions = self.model.predict(image)
@@ -370,7 +391,8 @@ class Predictor3DCascaded(Predictor3D):
 
         print(self.calculate_dice(label, pred_label))
 
-        self.display(image, label, pred_label)
+        if display:
+            self.display(image, label, pred_label)
 
         return image, label, pred_label
 

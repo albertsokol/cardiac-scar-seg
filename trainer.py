@@ -83,7 +83,7 @@ class Trainer:
         self.callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
                 self.model_save_path,
-                monitor='val_dice' if model not in ['CascadedUNet3D'] else 'val_scar_out_dice',
+                monitor='val_scar' if model not in ['CascadedUNet3D'] else 'val_scar_out_dice',
                 save_best_only=True,
                 verbose=1,
                 mode='max'
@@ -304,7 +304,7 @@ class Trainer:
             output_length=len(self.labels)
         ).create_model()
 
-        plot_model(model, 'CascadedUNet3Dplot.png', show_shapes=True)
+        plot_model(model, f'{self.model}_plot.png', show_shapes=True)
         model.summary(line_length=160)
 
         # Exit to learning rate finder if that mode has been selected
@@ -314,8 +314,8 @@ class Trainer:
 
         # TODO: implement other models
         # TODO: assertions on all config stuff to prevent naughty values being given
-        # TODO: end-to-end or separately trained?
-        # TODO: maintain aspect ratio resize by just adding black to the image around the scan
+        # TODO: maintain aspect ratio resize by just adding black to the image around the scan instead of distorting
+        # TODO: automate label filtering and combining
 
         # Learning rate decay: will be used if not 0, otherwise use static LR
         if self.lr_decay:

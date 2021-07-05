@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.special import softmax
 
-from predict import Predictor2D, Predictor3D, np_dice_coefficient
+from predict import Predictor2D, Predictor3D
 from readers import NIIReader, NPYReader
 
 
@@ -73,4 +73,3 @@ if __name__ == '__main__':
     print(pred_labels.shape)
 
     nii_reader.scroll_view(pred_labels)
-    print(np_dice_coefficient(lab_tr, pred_labels))

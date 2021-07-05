@@ -4,8 +4,7 @@ import nibabel as nib
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
-from scipy.ndimage import zoom
-from skimage.transform import resize
+from scipy.ndimage import zoom, rotate
 from tqdm import tqdm
 
 
@@ -14,6 +13,7 @@ class IndexTracker:
     Implementation of scrollable 3d images in matplotlib adapted from
     https://matplotlib.org/stable/gallery/event_handling/image_slices_viewer.html
     """
+
     def __init__(self, ax, img, plane):
         self.ax = ax
         assert plane in ['sagittal', 'coronal', 'transverse'], 'plane must be one of: sagittal, coronal, transverse'
@@ -58,8 +58,9 @@ class IndexTracker:
         self.im.axes.figure.canvas.draw()
 
 
-class FileReader:
+class __FileReader:
     """ Generic class for common file reading functions. """
+
     def __init__(self):
         self.fig, self.ax = plt.subplots(1, 1)
 
@@ -82,8 +83,9 @@ class FileReader:
         raise NotImplementedError
 
 
-class NIIReader(FileReader):
+class NIIReader(__FileReader):
     """ Class for reading MRI images in .nii file format. """
+
     def __init__(self):
         super().__init__()
 
@@ -104,7 +106,6 @@ class NIIReader(FileReader):
         if dims is not None and magnify is not None:
             raise AttributeError("Both dims and magnify cannot be selected - please specify only one")
         if dims is not None:
-            # magnify = (dims[0] / img.shape[0], dims[1] / img.shape[1], dims[2] / img.shape[2])
             magnify = tuple([x / y for x, y in zip(dims, img.shape)])
         return zoom(img, magnify, order=interpolation_order)
 
@@ -118,8 +119,9 @@ class NIIReader(FileReader):
         return np.squeeze(self.numpy(nib.load(f, mmap=False)))
 
 
-class NPYReader(FileReader):
+class NPYReader(__FileReader):
     """ Class for reading image slices in .npy file format. """
+
     def __init__(self):
         super().__init__()
 
@@ -157,15 +159,10 @@ if __name__ == '__main__':
     #     image = np.squeeze(reader.read(os.path.join(base_folder, root, f'{root}_SAX.nii.gz')))
     #     shape = image.shape
     #     label = np.squeeze(reader.read(os.path.join(base_folder, root, f'{root}_SAX_mask2.nii.gz')))
-    #     # curr_top_sum = np.sum(image[:10, :, :])
-    #     # plt.imshow(image[:10, :, 0])
-    #     # plt.show()
-    #     # print(curr_top_sum)
-    #     # if curr_top_sum < 10_000:
-    #     #     print(i)
-    #     reader.scroll_view(label)
+    #
     #     if shape[0] != shape[1]:
     #         print(f'{root} is non-square')
+    #
     #     hw += [shape[0]]
     #     ax_thickness += [shape[2]]
     #     squares += 1 if shape[0] == shape[1] else 0
@@ -177,27 +174,27 @@ if __name__ == '__main__':
     # plt.show()
 
     # Save all 3D as 2D numpy arrays in each plane to allow shuffled loading during 2D training
-    for g in ['train', 'val', 'test']:
-        for x in tqdm(sorted(os.listdir(f'/media/y4tsu/ml_data/cmr/3D/{g}/'))):
-            image_fname = os.path.join('/media/y4tsu/ml_data/cmr/3D/', g, x, f'{x}_SAX.nii.gz')
-            label_fname = os.path.join('/media/y4tsu/ml_data/cmr/3D/', g, x, f'{x}_SAX_mask2.nii.gz')
-
-            image = reader.read(image_fname)
-            label = reader.read(label_fname)
-
-            os.mkdir(f'/media/y4tsu/ml_data/cmr/2D/{g}/coronal/{x}')
-            os.mkdir(f'/media/y4tsu/ml_data/cmr/2D/{g}/sagittal/{x}')
-            os.mkdir(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}')
-
-            for j in range(image.shape[0]):
-                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/coronal/{x}/{x}_{j:03}_image', image[j, :, :])
-                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/coronal/{x}/{x}_{j:03}_label', label[j, :, :])
-            for j in range(image.shape[1]):
-                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/sagittal/{x}/{x}_{j:03}_image', image[:, j, :])
-                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/sagittal/{x}/{x}_{j:03}_label', label[:, j, :])
-            for j in range(image.shape[2]):
-                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}/{x}_{j:03}_image', image[:, :, j])
-                np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}/{x}_{j:03}_label', label[:, :, j])
+    # for g in ['train', 'val', 'test']:
+    #     for x in tqdm(sorted(os.listdir(f'/media/y4tsu/ml_data/cmr/3D/{g}/'))):
+    #         image_fname = os.path.join('/media/y4tsu/ml_data/cmr/3D/', g, x, f'{x}_SAX.nii.gz')
+    #         label_fname = os.path.join('/media/y4tsu/ml_data/cmr/3D/', g, x, f'{x}_SAX_mask2.nii.gz')
+    #
+    #         image = reader.read(image_fname)
+    #         label = reader.read(label_fname)
+    #
+    #         os.mkdir(f'/media/y4tsu/ml_data/cmr/2D/{g}/coronal/{x}')
+    #         os.mkdir(f'/media/y4tsu/ml_data/cmr/2D/{g}/sagittal/{x}')
+    #         os.mkdir(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}')
+    #
+    #         for j in range(image.shape[0]):
+    #             np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/coronal/{x}/{x}_{j:03}_image', image[j, :, :])
+    #             np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/coronal/{x}/{x}_{j:03}_label', label[j, :, :])
+    #         for j in range(image.shape[1]):
+    #             np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/sagittal/{x}/{x}_{j:03}_image', image[:, j, :])
+    #             np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/sagittal/{x}/{x}_{j:03}_label', label[:, j, :])
+    #         for j in range(image.shape[2]):
+    #             np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}/{x}_{j:03}_image', image[:, :, j])
+    #             np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}/{x}_{j:03}_label', label[:, :, j])
 
     # Save all 3D as depth=3 slices to allow shuffled loading during training
     # for g in ['train', 'val', 'test']:
