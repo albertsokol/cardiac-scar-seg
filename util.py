@@ -11,6 +11,143 @@ from tqdm import tqdm
 from readers import NIIReader
 
 
+class Cropper:
+    """Class for cropping images and labels."""
+    def __init__(self, dataset, pad=8):
+        """Initializer for Cropper."""
+        self.dataset = dataset
+        self.manual_bboxes = self.load_manual_bboxes()
+        self.pad = pad
+
+    def load_manual_bboxes(self):
+        """Load the bboxes generated from the manual segmentations for use in manual cropping."""
+        bbox_dict = {}
+
+        with open(f'bbox_{self.dataset}.csv', 'r') as f:
+            reader = csv.reader(f)
+            next(reader)
+            for bbox in reader:
+                bbox_dict[bbox[0]] = {
+                    'top': bbox[1],
+                    'left': bbox[2],
+                    'bottom': bbox[3],
+                    'right': bbox[4],
+                }
+
+        return bbox_dict
+
+    def manual_crop(self, f, fname):
+        """Crop the given image or label file, using the file name to get the bounding box info."""
+        # Get the bounding box
+        bbox = self.manual_bboxes[fname.split('/')[-1].split('.')[0][:12]]
+        top, left, bottom, right = [int(x) for x in (bbox['top'], bbox['left'], bbox['bottom'], bbox['right'])]
+        # print(f'top: {top}, left: {left}, bottom: {bottom}, right: {right}')
+
+        # Find the longest dimension (width or height)
+        w = right - left
+        h = bottom - top
+        longest = max(w, h)
+
+        if w == longest:
+            # Find the amount to add to top and bottom; if odd, will need to add an extra px
+            if (w - h) % 2 != 0:
+                add_top = ((w - h) // 2) + 1
+                add_bottom = (w - h) // 2
+            else:
+                add_top = (w - h) // 2
+                add_bottom = (w - h) // 2
+            # Take the slice of the image
+            # print(f'add_top: {add_top}, add_bottom: {add_bottom}')
+            cut = f[
+                  max(top - self.pad - add_top, 0):min(bottom + self.pad + add_bottom, f.shape[0]),
+                  max(left - self.pad, 0):min(right + self.pad, f.shape[1]),
+                  ...
+                  ]
+            # Need to check if going out of bounds
+            if cut.shape[0] != cut.shape[1]:
+                if top - self.pad - add_top < 0:
+                    # Add some zero padding to the top to fill up the gap
+                    bleed = (top - self.pad - add_top) * -1
+                    if len(f.shape) > 2:
+                        padding = np.zeros([bleed, cut.shape[1], f.shape[2]])
+                    else:
+                        padding = np.zeros([bleed, cut.shape[1]])
+                    cut = np.concatenate((padding, cut), axis=0)
+                if left - self.pad < 0:
+                    # Add some zero padding to the left
+                    bleed = (left - self.pad) * -1
+                    if len(f.shape) > 2:
+                        padding = np.zeros([cut.shape[0], bleed, f.shape[2]])
+                    else:
+                        padding = np.zeros([cut.shape[0], bleed])
+                    cut = np.concatenate((padding, cut), axis=1)
+                if bottom + self.pad + add_bottom > f.shape[0]:
+                    # Add some zero padding to the bottom
+                    bleed = (f.shape[0] - bottom - self.pad - add_bottom) * -1
+                    if len(f.shape) > 2:
+                        padding = np.zeros([bleed, cut.shape[1], f.shape[2]])
+                    else:
+                        padding = np.zeros([bleed, cut.shape[1]])
+                    cut = np.concatenate((cut, padding), axis=0)
+                if right + self.pad > f.shape[1]:
+                    # Add some zero padding to the right
+                    bleed = (f.shape[1] - right - self.pad) * -1
+                    if len(f.shape) > 2:
+                        padding = np.zeros([cut.shape[0], bleed, f.shape[2]])
+                    else:
+                        padding = np.zeros([cut.shape[0], bleed])
+                    cut = np.concatenate((cut, padding), axis=1)
+        else:
+            if (h - w) % 2 != 0:
+                add_left = ((h - w) // 2) + 1
+                add_right = (h - w) // 2
+            else:
+                add_left = (h - w) // 2
+                add_right = (h - w) // 2
+            # print(f'add_left: {add_left}, add_right: {add_right}')
+            cut = f[
+                  max(top - self.pad, 0):min(bottom + self.pad, f.shape[0]),
+                  max(left - self.pad - add_left, 0):min(right + self.pad + add_right, f.shape[1]),
+                  ...
+                  ]
+            # Need to check if going out of bounds
+            if cut.shape[0] != cut.shape[1]:
+                if top - self.pad < 0:
+                    # Add some zero padding to the top to fill up the gap
+                    bleed = (top - self.pad) * -1
+                    if len(f.shape) > 2:
+                        padding = np.zeros([bleed, cut.shape[1], f.shape[2]])
+                    else:
+                        padding = np.zeros([bleed, cut.shape[1]])
+                    cut = np.concatenate((padding, cut), axis=0)
+                if left - self.pad - add_left < 0:
+                    # Add some zero padding to the left
+                    bleed = (left - self.pad - add_left) * -1
+                    if len(f.shape) > 2:
+                        padding = np.zeros([cut.shape[0], bleed, f.shape[2]])
+                    else:
+                        padding = np.zeros([cut.shape[0], bleed])
+                    cut = np.concatenate((padding, cut), axis=1)
+                if bottom + self.pad > f.shape[0]:
+                    # Add some zero padding to the bottom
+                    bleed = (f.shape[0] - bottom - self.pad) * -1
+                    if len(f.shape) > 2:
+                        padding = np.zeros([bleed, cut.shape[1], f.shape[2]])
+                    else:
+                        padding = np.zeros([bleed, cut.shape[1]])
+                    cut = np.concatenate((cut, padding), axis=0)
+                if right + self.pad + add_right > f.shape[1]:
+                    # Add some zero padding to the right
+                    bleed = (f.shape[1] - right - self.pad - add_right) * -1
+                    if len(f.shape) > 2:
+                        padding = np.zeros([cut.shape[0], bleed, f.shape[2]])
+                    else:
+                        padding = np.zeros([cut.shape[0], bleed])
+                    cut = np.concatenate((cut, padding), axis=1)
+
+        return cut
+
+
 def rotate_incorrect_orientations():
     """
     Rotate a list of manually specified images by 90 degrees anti-clockwise so that all images are in the same
@@ -78,8 +215,6 @@ def get_bounding_boxes(dataset='train'):
     out = [['fname', 'top', 'left', 'bottom', 'right']]
 
     for i, root in enumerate(tqdm(roots)):
-        if i == 0:
-            continue
         label = np.squeeze(reader.read(os.path.join(base_folder, root, f'{root}_SAX_mask2.nii.gz')))
         binary_label = np.where(np.equal(label, 0), 0, 1)
 
@@ -105,6 +240,7 @@ def get_bounding_boxes(dataset='train'):
             if right > bbox[3]:
                 bbox[3] = right
 
+        print(f'dims: {bbox[3] - bbox[1]} x {bbox[2] - bbox[0]}')
         out += [[root, *bbox]]
 
     with open(f'bbox_{dataset}.csv', 'w') as f:
@@ -113,4 +249,4 @@ def get_bounding_boxes(dataset='train'):
 
 
 if __name__ == '__main__':
-    get_bounding_boxes()
+    get_bounding_boxes('val')

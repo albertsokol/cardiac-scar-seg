@@ -7,22 +7,34 @@ from scipy.special import softmax
 
 from metrics import DiceMetric, ClassWiseDiceMetric
 from readers import NIIReader, NPYReader
+from util import Cropper
 
 
 class __Predictor:
-    def __init__(self, data_path, dataset):
+    def __init__(self, data_path, dataset, train_config):
         self.rng = np.random.default_rng()
 
-        self.image_size = None
-        self.model_name = None
-        self.reader = None
-        self.image_fnames = None
-        self.label_fnames = None
-        self.labels_dict = None
+        self.model_name = train_config['model']
+        self.image_size = train_config['image_size']
+        self.labels_dict = train_config['labels']
 
         self.data_path = data_path
         assert dataset in ["train", "val", "test"], f"dataset must be one of: 'train', 'val', 'test'; but got {dataset}"
         self.dataset = dataset
+        self.use_manual_crop = train_config['use_manual_crop']
+        self.cropper = Cropper(dataset)
+
+    @staticmethod
+    def load_model(model_path):
+        """ Loads the pretrained model. """
+        return tf.keras.models.load_model(
+            model_path,
+            compile=False,
+            custom_objects={
+                'DiceMetric': DiceMetric,
+                'ClassWiseDiceMetric': ClassWiseDiceMetric
+            }
+        )
 
     def calculate_dice(self, y_true, y_pred):
         """Computes dice coefficient between gt and predicted segmentations using numpy."""
@@ -52,35 +64,25 @@ class __Predictor:
     def predict(self, fname=None, display=False):
         raise NotImplementedError
 
+    def display(self, image, label, pred_label, plane='transverse'):
+        """
+        Should show the label vs. prediction, label vs. image and prediction vs. image in a single scrollable view.
+        """
+        self.reader.scroll_view(np.concatenate((label, pred_label)), plane=plane)
+
 
 class Predictor3D(__Predictor):
     def __init__(self, data_path, dataset, model_path, train_config):
-        super().__init__(data_path, dataset)
-
+        super().__init__(data_path, dataset, train_config)
         self.data_path = os.path.join(data_path, '3D', self.dataset)
-        self.model = self.load_model(model_path, train_config)
 
-    def load_model(self, model_path, train_config):
-        """ Loads the pretrained model and config. """
-        self.model_name = train_config['model']
-        self.image_size = train_config['image_size']
-        self.labels_dict = train_config['labels']
-
-        # Make sure that the correct readers and data are loaded for the given config / dimensionality
         self.reader = NIIReader()
         self.image_fnames = [os.path.join(self.data_path, x, f'{x}_SAX.nii.gz') for x in
                              sorted(os.listdir(self.data_path))]
         self.label_fnames = [os.path.join(self.data_path, x, f'{x}_SAX_mask2.nii.gz') for x in
                              sorted(os.listdir(self.data_path))]
 
-        return tf.keras.models.load_model(
-            model_path,
-            compile=False,
-            custom_objects={
-                'DiceMetric': DiceMetric,
-                'ClassWiseDiceMetric': ClassWiseDiceMetric
-            }
-        )
+        self.model = self.load_model(model_path)
 
     def load_image_label(self, fname):
         """ Loads the image and label files. """
@@ -89,13 +91,20 @@ class Predictor3D(__Predictor):
             idx = self.rng.integers(0, len(self.image_fnames))
             image_path = self.image_fnames[idx]
             label_path = self.label_fnames[idx]
+            suffix = image_path.split('/')[-1].split('.')[0][:12]
+            print(image_path)
         else:
-            image_path = os.path.join(fname, f'{fname.split("/")[-1]}_SAX.nii.gz')
-            label_path = os.path.join(fname, f'{fname.split("/")[-1]}_SAX_mask2.nii.gz')
+            suffix = fname.split("/")[-1]
+            image_path = os.path.join(fname, f'{suffix}_SAX.nii.gz')
+            label_path = os.path.join(fname, f'{suffix}_SAX_mask2.nii.gz')
 
         # Load image and label
         image = self.reader.read(image_path)
         label = self.reader.read(label_path)
+
+        if self.use_manual_crop:
+            image = self.cropper.manual_crop(image, suffix)
+            label = self.cropper.manual_crop(label, suffix)
 
         # Set to the correct dimensions
         if image.shape != self.image_size:
@@ -109,16 +118,6 @@ class Predictor3D(__Predictor):
         image = image[np.newaxis, ..., np.newaxis]
 
         return image, label
-
-    def display(self, image, label, pred_label, plane='transverse'):
-        """
-        Should show the label vs. prediction, label vs. image and prediction vs. image in a single scrollable view.
-        """
-        # TODO: also look @ the pred label on image, pred label on label, label on image in same view
-        # Set all arrays to the same shape and rank
-        image = np.squeeze(image)
-
-        self.reader.scroll_view(np.concatenate((label, pred_label)), plane=plane)
 
     def predict(self, fname=None, display=False):
         image, label = self.load_image_label(fname)
@@ -135,31 +134,14 @@ class Predictor3D(__Predictor):
 
 class Predictor2D(__Predictor):
     def __init__(self, data_path, dataset, model_path, train_config):
-        super().__init__(data_path, dataset)
+        super().__init__(data_path, dataset, train_config)
+        self.data_path = os.path.join(data_path, '2D', self.dataset, train_config["plane"])
 
-        self.data_path = os.path.join(data_path, '2D', self.dataset)
-        self.model = self.load_model(model_path, train_config)
-
-    def load_model(self, model_path, train_config):
-        """ Loads the pretrained model and config. """
-        self.model_name = train_config['model']
-        self.image_size = train_config['image_size']
-        self.labels_dict = train_config['labels']
-
-        # Make sure that the correct readers and data are loaded for the given config / dimensionality
-        self.data_path = f'{self.data_path}/{train_config["plane"]}'
+        self.reader = NPYReader()
         self.image_fnames = [os.path.join(self.data_path, x) for x in sorted(os.listdir(self.data_path))]
         self.label_fnames = [os.path.join(self.data_path, x) for x in sorted(os.listdir(self.data_path))]
-        self.reader = NPYReader()
 
-        return tf.keras.models.load_model(
-            model_path,
-            compile=False,
-            custom_objects={
-                'DiceMetric': DiceMetric,
-                'ClassWiseDiceMetric': ClassWiseDiceMetric
-            }
-        )
+        self.model = self.load_model(model_path)
 
     def load_image_label(self, fname):
         """ Loads the image and label files. """
@@ -171,6 +153,7 @@ class Predictor2D(__Predictor):
         else:
             image_folder = fname
             label_folder = fname
+        suffix = image_folder.split("/")[-1]
 
         # Load image and label
         image_paths = [os.path.join(self.data_path, image_folder, x)
@@ -184,6 +167,10 @@ class Predictor2D(__Predictor):
         for i, (image_path, label_path) in enumerate(zip(image_paths, label_paths)):
             image = self.reader.read(image_path)
             label = self.reader.read(label_path)
+
+            if self.use_manual_crop:
+                image = self.cropper.manual_crop(image, suffix)
+                label = self.cropper.manual_crop(label, suffix)
 
             # Set to the correct dimensions
             if image.shape != self.image_size:
@@ -199,14 +186,6 @@ class Predictor2D(__Predictor):
             labels[i, ...] = label
 
         return images, labels
-
-    def display(self, image, label, pred_label, plane='transverse'):
-        """
-        Should show the label vs. prediction, label vs. image and prediction vs. image in a single scrollable view.
-        """
-        # TODO: also look @ the pred label on image, pred label on label, label on image in same view
-        # Set all arrays to the same shape and rank
-        self.reader.scroll_view(np.concatenate((label, pred_label)), plane=plane)
 
     def predict(self, fname=None, display=False):
         images, labels = self.load_image_label(fname)
@@ -248,31 +227,14 @@ class Predictor2D(__Predictor):
 
 class Predictor3DShallow(__Predictor):
     def __init__(self, data_path, dataset, model_path, train_config):
-        super().__init__(data_path, dataset)
+        super().__init__(data_path, dataset, train_config)
+        self.data_path = os.path.join(data_path, '3DShallow', self.dataset, train_config["plane"])
 
-        self.data_path = os.path.join(data_path, '3DShallow', self.dataset)
-        self.model = self.load_model(model_path, train_config)
-
-    def load_model(self, model_path, train_config):
-        """ Loads the pretrained model and config. """
-        self.model_name = train_config['model']
-        self.image_size = train_config['image_size']
-        self.labels_dict = train_config['labels']
-
-        # Make sure that the correct readers and data are loaded for the given config / dimensionality
-        self.data_path = f'{self.data_path}/{train_config["plane"]}'
+        self.reader = NPYReader()
         self.image_fnames = [os.path.join(self.data_path, x) for x in sorted(os.listdir(self.data_path))]
         self.label_fnames = [os.path.join(self.data_path, x) for x in sorted(os.listdir(self.data_path))]
-        self.reader = NPYReader()
 
-        return tf.keras.models.load_model(
-            model_path,
-            compile=False,
-            custom_objects={
-                'DiceMetric': DiceMetric,
-                'ClassWiseDiceMetric': ClassWiseDiceMetric
-            }
-        )
+        self.model = self.load_model(model_path)
 
     def load_image_label(self, fname):
         """ Loads the image and label files. """
@@ -284,6 +246,7 @@ class Predictor3DShallow(__Predictor):
         else:
             image_folder = fname
             label_folder = fname
+        suffix = image_folder.split("/")[-1]
 
         # Load image and label
         image_paths = [os.path.join(self.data_path, image_folder, x)
@@ -297,6 +260,10 @@ class Predictor3DShallow(__Predictor):
         for i, (image_path, label_path) in enumerate(zip(image_paths, label_paths)):
             image = self.reader.read(image_path)
             label = self.reader.read(label_path)
+
+            if self.use_manual_crop:
+                image = self.cropper.manual_crop(image, suffix)
+                label = self.cropper.manual_crop(label, suffix)
 
             # Set to the correct dimensions
             if image.shape != self.image_size:
@@ -362,12 +329,6 @@ class Predictor3DShallow(__Predictor):
 
         return image, label, pred_label
 
-    def display(self, image, label, pred_label, plane='transverse'):
-        """
-        Should show the label vs. prediction, label vs. image and prediction vs. image in a single scrollable view.
-        """
-        self.reader.scroll_view(np.concatenate((label, pred_label)), plane=plane)
-
 
 class Predictor3DCascaded(Predictor3D):
     def __init__(self, data_path, dataset, model_path, train_config):
@@ -419,4 +380,4 @@ if __name__ == '__main__':
     else:
         p = Predictor2D(**predict_config, train_config=train_config)
 
-    p.predict()
+    p.predict(display=True)

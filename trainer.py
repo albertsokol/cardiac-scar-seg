@@ -19,7 +19,7 @@ class Trainer:
     """ Trainer class for training models. """
 
     def __init__(self, model_save_path, data_path, mode, model, plane, num_epochs, batch_size, image_size,
-                 learning_rate, lr_decay, warmup, labels, loss_fn, augmentation):
+                 use_manual_crop, learning_rate, lr_decay, warmup, labels, loss_fn, augmentation):
         """
         Initializer for Trainer.
         """
@@ -83,7 +83,7 @@ class Trainer:
         self.callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
                 self.model_save_path,
-                monitor='val_scar' if model not in ['CascadedUNet3D'] else 'val_scar_out_dice',
+                monitor='val_dice' if model not in ['CascadedUNet3D'] else 'val_general_out_dice',
                 save_best_only=True,
                 verbose=1,
                 mode='max'
@@ -105,14 +105,18 @@ class Trainer:
             batch_size,
             image_size,
             labels,
+            dataset='train',
             augmenter=self.augmenter,
+            use_manual_crop=use_manual_crop,
         )
         self.val_gen = self.gen_dict[self.dimensionality](
             self.val_data_path,
             batch_size,
             image_size,
             labels,
+            dataset='val',
             shuffle=False,
+            use_manual_crop=use_manual_crop,
         )
 
         # Labels
@@ -314,7 +318,6 @@ class Trainer:
 
         # TODO: implement other models
         # TODO: assertions on all config stuff to prevent naughty values being given
-        # TODO: maintain aspect ratio resize by just adding black to the image around the scan instead of distorting
         # TODO: automate label filtering and combining
 
         # Learning rate decay: will be used if not 0, otherwise use static LR

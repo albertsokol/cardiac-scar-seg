@@ -5,22 +5,28 @@ from tensorflow import one_hot
 from tensorflow.keras.utils import Sequence
 
 from readers import NIIReader, NPYReader
+from util import Cropper
 
 
 class __Generator(Sequence):
-    def __init__(self, data_path, batch_size, image_size, labels, shuffle, augmenter):
+    def __init__(self, data_path, batch_size, image_size, labels, dataset, shuffle, augmenter, use_manual_crop):
         # Set up image filenames and indexing
-        self.augmenter = augmenter
         self.data_path = data_path
+        self.dataset = dataset
         self.image_fnames = [os.path.join(data_path, x, f'{x}_SAX.nii.gz') for x in sorted(os.listdir(data_path))]
         self.label_fnames = [os.path.join(data_path, x, f'{x}_SAX_mask2.nii.gz') for x in sorted(os.listdir(data_path))]
         assert len(self.image_fnames) == len(self.label_fnames), "Number of image files and label files did not match!"
         self.index = np.arange(len(self.image_fnames))
 
+        # Image handling
+        self.augmenter = augmenter
+        self.cropper = Cropper(dataset)
+
         # Model parameters
         self.batch_size = batch_size
         self.image_size = image_size
         self.labels = labels
+        self.use_manual_crop = use_manual_crop
 
         # Shuffle the data before starting if shuffling has been turned on
         self.shuffle = shuffle
@@ -51,25 +57,29 @@ class __Generator(Sequence):
 
         # Get the training data
         for i, index in enumerate(batch_indices):
-            img = self.read_file(index, self.image_fnames)
-            label = self.read_file(index, self.label_fnames)
+            img, fname = self.read_file(index, self.image_fnames)
+            label, fname = self.read_file(index, self.label_fnames)
             img = self.reader.normalize(img)
 
             # Apply data augmentation if option is turned on
             if self.augmenter and not weight_mode:
                 img, label = self.augmenter.augment(img, label)
 
-            x[i, ...] = self.prepare_img(img)
-            y[i, ...] = self.prepare_label(label)
+            x[i, ...] = self.prepare_img(img, fname)
+            y[i, ...] = self.prepare_label(label, fname)
 
         return x, y
 
     def read_file(self, index, fname_list):
         """ Read the file at the given index of the given list. """
-        return self.reader.read(fname_list[index])
+        return self.reader.read(fname_list[index]), fname_list[index]
 
-    def prepare_img(self, img):
+    def prepare_img(self, img, fname):
         """ Set the image to the correct size and dimensions for placement into the input tensor. """
+        # If cropping, then crop the image here
+        if self.use_manual_crop:
+            img = self.cropper.manual_crop(img, fname)
+
         # Resize to the input shape of the model
         if img.shape != self.image_size:
             img = self.reader.resize(img, self.image_size)
@@ -78,8 +88,12 @@ class __Generator(Sequence):
 
         return self.reader.normalize(img)
 
-    def prepare_label(self, label):
+    def prepare_label(self, label, fname):
         """ Set the label to the correct size and dimensions for placement into the ground truth tensor. """
+        # If cropping, then crop the label here
+        if self.use_manual_crop:
+            label = self.cropper.manual_crop(label, fname)
+
         # Resize to the input shape of the model without interpolation
         if label.shape != self.image_size:
             label = self.reader.resize(label, self.image_size, interpolation_order=0)
@@ -90,15 +104,53 @@ class __Generator(Sequence):
 
 class Generator3D(__Generator):
     """ Class for the 3D image and label generator. """
-    def __init__(self, data_path, batch_size, image_size, labels, shuffle=True, augmenter=None):
-        super().__init__(data_path, batch_size, image_size, labels, shuffle, augmenter)
+    def __init__(
+        self,
+        data_path,
+        batch_size,
+        image_size,
+        labels,
+        dataset,
+        shuffle=True,
+        augmenter=None,
+        use_manual_crop=False,
+    ):
+        super().__init__(
+            data_path,
+            batch_size,
+            image_size,
+            labels,
+            dataset,
+            shuffle,
+            augmenter,
+            use_manual_crop,
+        )
         self.reader = NIIReader()
 
 
 class Generator2D(__Generator):
     """ Class for the 2D image and label generator. """
-    def __init__(self, data_path, batch_size, image_size, labels, shuffle=True, augmenter=None):
-        super().__init__(data_path, batch_size, image_size, labels, shuffle, augmenter)
+    def __init__(
+        self,
+        data_path,
+        batch_size,
+        image_size,
+        labels,
+        dataset,
+        shuffle=True,
+        augmenter=None,
+        use_manual_crop=False,
+    ):
+        super().__init__(
+            data_path,
+            batch_size,
+            image_size,
+            labels,
+            dataset,
+            shuffle,
+            augmenter,
+            use_manual_crop,
+        )
         self.image_fnames = [
             [os.path.join(data_path, x, f'{x}_{i:03}_image.npy')
              for i in range(len(sorted(os.listdir(os.path.join(data_path, x)))) // 2)]
@@ -119,7 +171,7 @@ class Generator2D(__Generator):
 
 
 class __CascadedGenerator(Sequence):
-    def __init__(self, data_path, batch_size, image_size, labels, shuffle, augmenter):
+    def __init__(self, data_path, batch_size, image_size, labels, dataset, shuffle, augmenter, use_manual_crop=False):
         # Set up image filenames and indexing
         self.augmenter = augmenter
         self.data_path = data_path
