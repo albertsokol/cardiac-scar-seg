@@ -8,7 +8,7 @@ from tqdm import tqdm
 from tensorflow.keras.utils import plot_model
 
 from augmenter import Augmenter3D, Augmenter2D
-from callbacks import LearningRateFinder, LearningRatePrinter
+from callbacks import LearningRatePrinter
 from generators import Generator3D, Generator2D, CascadedGenerator3D
 from losses import SoftmaxLoss, WeightedSoftmaxLoss, DiceLoss, WeightedSoftmaxDiceLoss, CascadedWeightedSoftmaxDiceLoss
 from metrics import DiceMetric, ClassWiseDiceMetric
@@ -22,7 +22,6 @@ class Trainer:
         self,
         model_save_path,
         data_path,
-        mode,
         model,
         plane,
         num_epochs,
@@ -83,10 +82,6 @@ class Trainer:
             "3DCascaded": CascadedGenerator3D,
         }
 
-        # Mode: "lrf" for learning rate finder, "train" for normal model training
-        assert mode in ['lrf', 'train'], f'mode \'{mode}\' does not exist, please use \'lrf\' or \'train\''
-        self.mode = mode
-
         assert not (warmup and lr_decay), "currently warmup and lr_decay cannot be used simultaneously"
 
         # Training parameters
@@ -104,7 +99,7 @@ class Trainer:
                 monitor='val_dice' if model not in ['CascadedUNet3D'] else 'val_general_out_dice',
                 save_best_only=True,
                 verbose=1,
-                mode='max'
+                mode='max',
             )
         ]
 
@@ -196,21 +191,6 @@ class Trainer:
         weights["pap"] = 1. / (weights["pap"] / total_voxels)
 
         return weights
-
-    def lrf(self, model):
-        """ Run the learning rate finder. """
-        self.num_epochs = 3
-        lrf = LearningRateFinder(self.num_epochs * len(self.train_gen.image_fnames) // self.batch_size)
-        optimizer = tf.keras.optimizers.Adam()
-        model.compile(optimizer=optimizer, loss=self.loss_fn)
-        model.fit(self.train_gen,
-                  validation_data=self.val_gen,
-                  epochs=self.num_epochs,
-                  steps_per_epoch=len(self.train_gen.image_fnames) // self.batch_size,
-                  validation_steps=len(self.val_gen.image_fnames) // self.batch_size,
-                  callbacks=[lrf]
-                  )
-        lrf.plot()
 
     def warmup_lr(self, *args):
         """ Warm up learning rate scheduler. Just naively reduce the LR for epoch 1 to get steadier momentum. """
@@ -333,14 +313,8 @@ class Trainer:
         plot_model(model, f'{self.model}_plot.png', show_shapes=True)
         model.summary(line_length=160)
 
-        # Exit to learning rate finder if that mode has been selected
-        if self.mode == 'lrf':
-            self.lrf(model)
-            return
-
         # TODO: implement other models
         # TODO: assertions on all config stuff to prevent naughty values being given
-        # TODO: automate label filtering and combining
 
         # Learning rate decay: will be used if not 0, otherwise use static LR
         if self.lr_decay:
@@ -392,6 +366,7 @@ class Trainer:
         # Save the config that was used so that e.g., image size can be retrieved later for prediction
         with open(f'{self.model_save_path}/train_config.json', 'w') as f:
             f.write(json.dumps(config, indent=4))
+        print(f'Saved training config to {self.model_save_path}/train_config.json')
 
         # Plot the losses
         self.plot(history)

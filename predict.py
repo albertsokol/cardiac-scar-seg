@@ -21,8 +21,9 @@ class __Predictor:
         self.data_path = data_path
         assert dataset in ["train", "val", "test"], f"dataset must be one of: 'train', 'val', 'test'; but got {dataset}"
         self.dataset = dataset
-        self.use_manual_crop = train_config['use_manual_crop']
-        self.cropper = Cropper(dataset)
+
+        self.use_cropper = train_config['use_cropper']
+        self.cropper = Cropper(dataset, train_config['use_cropper'])
 
     @staticmethod
     def load_model(model_path):
@@ -32,7 +33,7 @@ class __Predictor:
             compile=False,
             custom_objects={
                 'DiceMetric': DiceMetric,
-                'ClassWiseDiceMetric': ClassWiseDiceMetric
+                'ClassWiseDiceMetric': ClassWiseDiceMetric,
             }
         )
 
