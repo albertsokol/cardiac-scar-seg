@@ -2,6 +2,8 @@ x
 
 ## Training settings: `train_config.json`
 
+All the training settings you might need to adjust are found in `train_config.json`. Update this file, then run `trainer.py` to train new models 
+
 * `"model_save_path"`: path to save the trained models, must be `str`
 * `"data_path"`: root to the MRI images/labels folder, must be `str`
 * `"model"`: name of the model to train, must be `str`, possible options are
@@ -9,7 +11,7 @@ x
   * `"UNet3D"`
   * `"UNet3DShallow"`
   * `"CascadedUNet3D"`   
-* `"plane"`: if using a 2D or shallow 3D UNet, use one of the following planes
+* `"plane"`: if using a 2D or shallow 3D UNet, use one of the following planes, must be `str`
   * `"transverse"`: short axis through the heart 
   * `"sagittal"`: horizontal axis 
   * `"coronal"`: vertical axis 
@@ -30,12 +32,12 @@ x
   * `"weighted softmax dice"`: mixed dice and weighted softmax loss functions 
   * `"cascaded weighted softmax dice"`: weighted softmax dice loss for use with end-to-end cascaded network 
 * `"labels"`: dictionary of `str: str` pairs, where keys are value given to a class in the label file, and values are class names, e.g., `"1": "lv myo"`. This should represent the labels as per the manual segmentations. Must be `dict`
-* `"combine_labels"`: must be a `list` of `list[str]`, where any label class names occurring in an inner list will be combined to form a single label. Used for training cascaded networks or automatic cropping models. For example, to create an automatic cropper, all heart tissue labels should be combined into one, so the correct value for this setting would be: 
+* `"combine_labels"`: must be a `list` of `list[str]`, where any label class names occurring in an inner list will be combined to form a single label. Set to an empty list `[]` to switch off label combining. Label combining is used for training cascaded networks or automatic cropping models. For example, to create an automatic cropper, all heart tissue labels should be combined into one, so the correct value for this setting would be: 
 ```json
-    [
-        ["bg"],
-        ["lv lumen", "lv myo", "scar", "pap", "rv lumen", "rv myo", "aorta"]
-    ]
+[
+  ["bg"],
+  ["lv lumen", "lv myo", "scar", "pap", "rv lumen", "rv myo", "aorta"]
+]
 ```
 * `"augmentation"`: parameters for simultaneous image and label data augmentation. Must be `dict` with the following settings: 
   * `"zoom"`: 

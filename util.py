@@ -15,11 +15,19 @@ class Cropper:
     def __init__(self, dataset, mode, pad=8):
         """Initializer for Cropper."""
         self.dataset = dataset
+        self.mode = "manual" if mode == "manual" else "auto"
         if mode == "manual":
-            self.bboxes = self.get_manual_bboxes()
+            self.bboxes = self._get_manual_bboxes()
         self.pad = pad
 
-    def get_manual_bboxes(self):
+    def crop(self, f, fname):
+        """Crop the given image f with the given fname, given the selected mode."""
+        if self.mode == "manual":
+            return self._manual_crop(f, fname)
+        else:
+            return self._auto_crop(f, fname)
+
+    def _get_manual_bboxes(self):
         """Load the manual segmentation masks from 3D images to get bounding boxes on the fly."""
         # WARNING!: not tested on non-square images, some of the axes in the top/left/bottom/right detection may be wrong
         print(f'Loading bboxes from manual segmentations for {self.dataset} data ... ')
@@ -64,7 +72,14 @@ class Cropper:
 
         return out
 
-    def manual_crop(self, f, fname):
+    def _get_auto_bboxes(self):
+        """Run the segmentation model to get bounding boxes for all the images in the dataset."""
+
+    def _auto_crop(self, f, fname):
+        """Crop the given image or label file, using the automatic cropper to get the bounding boxes."""
+        raise NotImplementedError
+
+    def _manual_crop(self, f, fname):
         """Crop the given image or label file, using the file name to get the bounding box info."""
         # Get the bounding box
         bbox = self.bboxes[fname.split('/')[-1].split('.')[0][:12]]

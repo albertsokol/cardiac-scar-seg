@@ -17,13 +17,15 @@ class __Predictor:
         self.model_name = train_config['model']
         self.image_size = train_config['image_size']
         self.labels_dict = train_config['labels']
+        self.combine_labels = train_config['combine_labels']
 
         self.data_path = data_path
         assert dataset in ["train", "val", "test"], f"dataset must be one of: 'train', 'val', 'test'; but got {dataset}"
         self.dataset = dataset
 
         self.use_cropper = train_config['use_cropper']
-        self.cropper = Cropper(dataset, train_config['use_cropper'])
+        if self.use_cropper:
+            self.cropper = Cropper(dataset, train_config['use_cropper'])
 
     @staticmethod
     def load_model(model_path):
@@ -37,10 +39,20 @@ class __Predictor:
             }
         )
 
+    def get_one_hot(self, y_true, y_pred):
+        """Get one-hot encoding representations of labels and predictions."""
+        if self.combine_labels:
+            y_true = tf.one_hot(y_true, len(self.combine_labels), dtype=np.int8).numpy()
+            y_pred = tf.one_hot(y_pred, len(self.combine_labels), dtype=np.int8).numpy()
+        else:
+            y_true = tf.one_hot(y_true, len(self.labels_dict), dtype=np.int8).numpy()
+            y_pred = tf.one_hot(y_pred, len(self.labels_dict), dtype=np.int8).numpy()
+
+        return y_true, y_pred
+
     def calculate_dice(self, y_true, y_pred):
         """Computes dice coefficient between gt and predicted segmentations using numpy."""
-        y_true = tf.one_hot(y_true, len(self.labels_dict), dtype=np.int8).numpy()
-        y_pred = tf.one_hot(y_pred, len(self.labels_dict), dtype=np.int8).numpy()
+        y_true, y_pred = self.get_one_hot(y_true, y_pred)
 
         numerator = 2 * np.sum(y_true * y_pred) + 1e-7
         denominator = np.sum(y_true) + np.sum(y_pred) + 1e-7
@@ -49,13 +61,12 @@ class __Predictor:
 
     def calculate_class_wise_dice(self, y_true, y_pred):
         """Computes dice coefficient for each class using numpy."""
-        y_true = tf.one_hot(y_true, len(self.labels_dict), dtype=np.int8).numpy()
-        y_pred = tf.one_hot(y_pred, len(self.labels_dict), dtype=np.int8).numpy()
-
-        dices = np.zeros([len(self.labels_dict)])
+        y_true, y_pred = self.get_one_hot(y_true, y_pred)
+        length = len(self.combine_labels) if self.combine_labels else len(self.labels_dict)
+        dices = np.zeros([length])
 
         # Iterate over all the classes, getting the dice score
-        for i in range(len(self.labels_dict)):
+        for i in range(length):
             numerator = 2 * np.sum(y_true[..., i] * y_pred[..., i]) + 1e-7
             denominator = np.sum(y_true[..., i]) + np.sum(y_pred[..., i]) + 1e-7
             dices[i] = numerator / denominator
@@ -103,9 +114,9 @@ class Predictor3D(__Predictor):
         image = self.reader.read(image_path)
         label = self.reader.read(label_path)
 
-        if self.use_manual_crop:
-            image = self.cropper.manual_crop(image, suffix)
-            label = self.cropper.manual_crop(label, suffix)
+        if self.use_cropper:
+            image = self.cropper.crop(image, suffix)
+            label = self.cropper.crop(label, suffix)
 
         # Set to the correct dimensions
         if image.shape != self.image_size:
@@ -169,9 +180,9 @@ class Predictor2D(__Predictor):
             image = self.reader.read(image_path)
             label = self.reader.read(label_path)
 
-            if self.use_manual_crop:
-                image = self.cropper.manual_crop(image, suffix)
-                label = self.cropper.manual_crop(label, suffix)
+            if self.use_cropper:
+                image = self.cropper.crop(image, suffix)
+                label = self.cropper.crop(label, suffix)
 
             # Set to the correct dimensions
             if image.shape != self.image_size:
@@ -210,7 +221,10 @@ class Predictor2D(__Predictor):
     def predict_logits(self, fname=None):
         """Return logits only rather than the softmax output."""
         images, labels = self.load_image_label(fname)
-        pred_logits = np.empty(list(images.shape[:-1]) + [len(self.labels_dict)], dtype=np.int8)
+        if self.combine_labels:
+            pred_logits = np.empty(list(images.shape[:-1]) + [len(self.combine_labels)], dtype=np.int8)
+        else:
+            pred_logits = np.empty(list(images.shape[:-1]) + [len(self.labels_dict)], dtype=np.int8)
 
         # Create a new model which pulls out the logits before the softmax activation at the end
         pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=self.model.layers[-2].output)
@@ -262,9 +276,9 @@ class Predictor3DShallow(__Predictor):
             image = self.reader.read(image_path)
             label = self.reader.read(label_path)
 
-            if self.use_manual_crop:
-                image = self.cropper.manual_crop(image, suffix)
-                label = self.cropper.manual_crop(label, suffix)
+            if self.use_cropper:
+                image = self.cropper.crop(image, suffix)
+                label = self.cropper.crop(label, suffix)
 
             # Set to the correct dimensions
             if image.shape != self.image_size:

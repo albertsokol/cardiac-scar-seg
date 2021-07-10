@@ -31,7 +31,8 @@ class __Generator(Sequence):
 
         # Image handling
         self.augmenter = augmenter
-        self.cropper = Cropper(dataset, mode=use_cropper)
+        if use_cropper:
+            self.cropper = Cropper(dataset, mode=use_cropper)
 
         # Model parameters
         self.batch_size = batch_size
@@ -93,8 +94,8 @@ class __Generator(Sequence):
     def prepare_img(self, img, fname):
         """ Set the image to the correct size and dimensions for placement into the input tensor. """
         # If cropping, then crop the image here
-        if self.use_cropper == "manual":
-            img = self.cropper.manual_crop(img, fname)
+        if self.use_cropper:
+            img = self.cropper.crop(img, fname)
 
         # Resize to the input shape of the model
         if img.shape != self.image_size:
@@ -107,8 +108,8 @@ class __Generator(Sequence):
     def prepare_label(self, label, fname):
         """ Set the label to the correct size and dimensions for placement into the ground truth tensor. """
         # If cropping, then crop the label here
-        if self.use_cropper == "manual":
-            label = self.cropper.manual_crop(label, fname)
+        if self.use_cropper:
+            label = self.cropper.crop(label, fname)
 
         # Resize to the input shape of the model without interpolation
         if label.shape != self.image_size:
