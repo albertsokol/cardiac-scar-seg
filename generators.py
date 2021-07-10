@@ -9,7 +9,18 @@ from util import Cropper
 
 
 class __Generator(Sequence):
-    def __init__(self, data_path, batch_size, image_size, labels, dataset, shuffle, augmenter, use_manual_crop):
+    def __init__(
+        self,
+        data_path,
+        batch_size,
+        image_size,
+        labels,
+        dataset,
+        shuffle,
+        augmenter,
+        use_cropper,
+        combine_labels,
+    ):
         # Set up image filenames and indexing
         self.data_path = data_path
         self.dataset = dataset
@@ -20,13 +31,15 @@ class __Generator(Sequence):
 
         # Image handling
         self.augmenter = augmenter
-        self.cropper = Cropper(dataset)
+        self.cropper = Cropper(dataset, mode=use_cropper)
 
         # Model parameters
         self.batch_size = batch_size
         self.image_size = image_size
         self.labels = labels
-        self.use_manual_crop = use_manual_crop
+        self.label_indices = {self.labels[k]: int(k) for k in self.labels}
+        self.use_cropper = use_cropper
+        self.combine_labels = combine_labels
 
         # Shuffle the data before starting if shuffling has been turned on
         self.shuffle = shuffle
@@ -53,7 +66,10 @@ class __Generator(Sequence):
     def get_data(self, batch_indices, weight_mode):
         # Initialise empty arrays for the training data and labels
         x = np.empty([self.batch_size, *self.image_size, 1], dtype=np.float32)
-        y = np.empty([self.batch_size, *self.image_size, len(self.labels)], dtype=np.int8)
+        if self.combine_labels:
+            y = np.empty([self.batch_size, *self.image_size, len(self.combine_labels)], dtype=np.int8)
+        else:
+            y = np.empty([self.batch_size, *self.image_size, len(self.labels)], dtype=np.int8)
 
         # Get the training data
         for i, index in enumerate(batch_indices):
@@ -77,7 +93,7 @@ class __Generator(Sequence):
     def prepare_img(self, img, fname):
         """ Set the image to the correct size and dimensions for placement into the input tensor. """
         # If cropping, then crop the image here
-        if self.use_manual_crop:
+        if self.use_cropper == "manual":
             img = self.cropper.manual_crop(img, fname)
 
         # Resize to the input shape of the model
@@ -91,15 +107,30 @@ class __Generator(Sequence):
     def prepare_label(self, label, fname):
         """ Set the label to the correct size and dimensions for placement into the ground truth tensor. """
         # If cropping, then crop the label here
-        if self.use_manual_crop:
+        if self.use_cropper == "manual":
             label = self.cropper.manual_crop(label, fname)
 
         # Resize to the input shape of the model without interpolation
         if label.shape != self.image_size:
             label = self.reader.resize(label, self.image_size, interpolation_order=0)
 
+        # If labels are to be combined, do that here and return a one hot encoded tensor
+        if self.combine_labels:
+            return self.apply_label_combine(label)
+
         # One hot encode the labels to create a new channel for each label and save as int8 to save space
         return one_hot(label, len(self.labels), dtype=np.int8).numpy()
+
+    def apply_label_combine(self, label):
+        """Combine each list of labels in self.combine_labels into a single label."""
+        out = np.zeros([*label.shape, len(self.combine_labels)], dtype=np.int8)
+
+        # Iterate over each list in combine_labels and update the zeros vector to 1 where that label is present
+        for i, combo in enumerate(self.combine_labels):
+            idxs = np.array([self.label_indices[x] for x in combo])
+            out[..., i] = np.where(np.isin(label, idxs), 1, 0)
+
+        return out
 
 
 class Generator3D(__Generator):
@@ -113,7 +144,8 @@ class Generator3D(__Generator):
         dataset,
         shuffle=True,
         augmenter=None,
-        use_manual_crop=False,
+        use_cropper=False,
+        combine_labels=None,
     ):
         super().__init__(
             data_path,
@@ -123,7 +155,8 @@ class Generator3D(__Generator):
             dataset,
             shuffle,
             augmenter,
-            use_manual_crop,
+            use_cropper,
+            combine_labels,
         )
         self.reader = NIIReader()
 
@@ -139,7 +172,8 @@ class Generator2D(__Generator):
         dataset,
         shuffle=True,
         augmenter=None,
-        use_manual_crop=False,
+        use_cropper=False,
+        combine_labels=None,
     ):
         super().__init__(
             data_path,
@@ -149,7 +183,8 @@ class Generator2D(__Generator):
             dataset,
             shuffle,
             augmenter,
-            use_manual_crop,
+            use_cropper,
+            combine_labels,
         )
         self.image_fnames = [
             [os.path.join(data_path, x, f'{x}_{i:03}_image.npy')
@@ -171,7 +206,18 @@ class Generator2D(__Generator):
 
 
 class __CascadedGenerator(Sequence):
-    def __init__(self, data_path, batch_size, image_size, labels, dataset, shuffle, augmenter, use_manual_crop=False):
+    def __init__(
+        self,
+        data_path,
+        batch_size,
+        image_size,
+        labels,
+        dataset,
+        shuffle,
+        augmenter,
+        use_cropper=False,
+        combine_labels=None,
+    ):
         # Set up image filenames and indexing
         self.augmenter = augmenter
         self.data_path = data_path
@@ -268,11 +314,49 @@ class __CascadedGenerator(Sequence):
 
 
 class CascadedGenerator3D(__CascadedGenerator):
-    def __init__(self, data_path, batch_size, image_size, labels, shuffle=True, augmenter=None):
-        super().__init__(data_path, batch_size, image_size, labels, shuffle, augmenter)
+    def __init__(
+        self,
+        data_path,
+        batch_size,
+        image_size,
+        labels,
+        shuffle=True,
+        augmenter=None,
+        use_cropper=False,
+        combine_labels=None,
+    ):
+        super().__init__(
+            data_path,
+            batch_size,
+            image_size,
+            labels,
+            shuffle,
+            augmenter,
+            use_cropper,
+            combine_labels,
+        )
         self.reader = NIIReader()
 
 
 class CascadedGenerator2D(__CascadedGenerator):
-    def __init__(self, data_path, batch_size, image_size, labels, shuffle=True, augmenter=None):
-        super().__init__(data_path, batch_size, image_size, labels, shuffle, augmenter)
+    def __init__(
+            self,
+            data_path,
+            batch_size,
+            image_size,
+            labels,
+            shuffle=True,
+            augmenter=None,
+            use_cropper=False,
+            combine_labels=None,
+    ):
+        super().__init__(
+            data_path,
+            batch_size,
+            image_size,
+            labels,
+            shuffle,
+            augmenter,
+            use_cropper,
+            combine_labels
+        )

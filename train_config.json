@@ -1,13 +1,13 @@
 {
-  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3Dexp_full",
+  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/auto_cropper_2D",
   "data_path": "/media/y4tsu/ml_data/cmr/",
   "mode": "train",
-  "model": "UNet3D",
+  "model": "UNet2D",
   "plane": "transverse",
   "num_epochs": 100,
-  "batch_size": 2,
-  "image_size": [144, 144, 16],
-  "use_manual_crop": true,
+  "batch_size": 8,
+  "image_size": [336, 336],
+  "use_cropper": false,
   "learning_rate": 5e-2,
   "lr_decay": 0.35,
   "warmup": false,
@@ -22,6 +22,10 @@
     "6": "pap",
     "7": "aorta"
   },
+  "combine_labels": [
+    ["bg"],
+    ["lv lumen", "lv myo", "scar", "pap", "rv lumen", "rv myo", "aorta"]
+  ],
   "augmentation": {
     "zoom": [0.96, 1.04],
     "rotate": false,

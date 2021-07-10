@@ -18,8 +18,25 @@ from models import UNet3D, UNet2D, UNet3DShallow, CascadedUNet3D
 class Trainer:
     """ Trainer class for training models. """
 
-    def __init__(self, model_save_path, data_path, mode, model, plane, num_epochs, batch_size, image_size,
-                 use_manual_crop, learning_rate, lr_decay, warmup, labels, loss_fn, augmentation):
+    def __init__(
+        self,
+        model_save_path,
+        data_path,
+        mode,
+        model,
+        plane,
+        num_epochs,
+        batch_size,
+        image_size,
+        use_cropper,
+        learning_rate,
+        lr_decay,
+        warmup,
+        labels,
+        combine_labels,
+        loss_fn,
+        augmentation,
+    ):
         """
         Initializer for Trainer.
         """
@@ -80,6 +97,7 @@ class Trainer:
         self.lr = learning_rate
         self.lr_decay = lr_decay
         self.warmup = warmup
+        self.combine_labels = combine_labels
         self.callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
                 self.model_save_path,
@@ -107,7 +125,8 @@ class Trainer:
             labels,
             dataset='train',
             augmenter=self.augmenter,
-            use_manual_crop=use_manual_crop,
+            use_cropper=use_cropper,
+            combine_labels=combine_labels,
         )
         self.val_gen = self.gen_dict[self.dimensionality](
             self.val_data_path,
@@ -116,7 +135,8 @@ class Trainer:
             labels,
             dataset='val',
             shuffle=False,
-            use_manual_crop=use_manual_crop,
+            use_cropper=use_cropper,
+            combine_labels=combine_labels,
         )
 
         # Labels
@@ -136,14 +156,16 @@ class Trainer:
 
     def calculate_label_weights(self):
         """ Calculate beta pixel weighting and its inverse as the label weights for weighted loss functions. """
-        sums = np.zeros(len(self.labels))
         print(f'Calculating label weightings across {len(self.train_gen.image_fnames)} label images for use in loss'
               f' function, may take a while ... ')
+        if self.combine_labels:
+            sums = np.zeros(len(self.combine_labels))
+        else:
+            sums = np.zeros(len(self.labels))
         for i in tqdm(range(len(self.train_gen.image_fnames) // self.batch_size)):
-            # print(self.train_gen.image_fnames[i])
             _, label_img = self.train_gen.__getitem__(i, weight_mode=True)
             # Get the number of labelled voxels of each class for each label image
-            sums += [label_img[..., j].sum() for j in range(len(self.labels))]
+            sums += [label_img[..., j].sum() for j in range(label_img.shape[-1])]
         # Get the total number of voxels in the dataset to normalize the beta
         total_voxels = np.prod(np.array([*self.image_size, len(self.train_gen.image_fnames)]))
         beta = sums / total_voxels
@@ -305,7 +327,7 @@ class Trainer:
         """ Train the model. """
         model = self.model_dict[self.model](
             input_size=self.image_size,
-            output_length=len(self.labels)
+            output_length=len(self.combine_labels) if self.combine_labels else len(self.labels),
         ).create_model()
 
         plot_model(model, f'{self.model}_plot.png', show_shapes=True)
@@ -334,9 +356,14 @@ class Trainer:
         optimizer = tf.keras.optimizers.Adam(learning_rate=schedule)
 
         if self.model not in ['CascadedUNet3D']:
-            metrics = [DiceMetric(self.batch_size)] + \
-                      [ClassWiseDiceMetric(self.batch_size, i, self.labels[label]) for i, label in
-                       zip(range(len(self.labels)), self.labels)]
+            if self.combine_labels:
+                metrics = [DiceMetric(self.batch_size)] + \
+                          [ClassWiseDiceMetric(self.batch_size, i, f'{i}_dice') for i in
+                           range(len(self.combine_labels))]
+            else:
+                metrics = [DiceMetric(self.batch_size)] + \
+                          [ClassWiseDiceMetric(self.batch_size, i, self.labels[label]) for i, label in
+                           zip(range(len(self.labels)), self.labels)]
         else:
             metrics = {
                 'general_out':
@@ -350,16 +377,17 @@ class Trainer:
         model.compile(
             optimizer=optimizer,
             loss=self.loss_fn,
-            metrics=metrics
+            metrics=metrics,
         )
 
-        history = model.fit(self.train_gen,
-                            validation_data=self.val_gen,
-                            epochs=self.num_epochs,
-                            steps_per_epoch=len(self.train_gen.image_fnames) // self.batch_size,
-                            validation_steps=len(self.val_gen.image_fnames) // self.batch_size,
-                            callbacks=self.callbacks
-                            )
+        history = model.fit(
+            self.train_gen,
+            validation_data=self.val_gen,
+            epochs=self.num_epochs,
+            steps_per_epoch=len(self.train_gen.image_fnames) // self.batch_size,
+            validation_steps=len(self.val_gen.image_fnames) // self.batch_size,
+            callbacks=self.callbacks,
+        )
 
         # Save the config that was used so that e.g., image size can be retrieved later for prediction
         with open(f'{self.model_save_path}/train_config.json', 'w') as f:

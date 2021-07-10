@@ -1,6 +1,5 @@
 """Various utility functions for working with the data and models."""
 import os
-import csv
 
 import nibabel as nib
 import numpy as np
@@ -13,33 +12,62 @@ from readers import NIIReader
 
 class Cropper:
     """Class for cropping images and labels."""
-    def __init__(self, dataset, pad=8):
+    def __init__(self, dataset, mode, pad=8):
         """Initializer for Cropper."""
         self.dataset = dataset
-        self.manual_bboxes = self.load_manual_bboxes()
+        if mode == "manual":
+            self.bboxes = self.get_manual_bboxes()
         self.pad = pad
 
-    def load_manual_bboxes(self):
-        """Load the bboxes generated from the manual segmentations for use in manual cropping."""
-        bbox_dict = {}
+    def get_manual_bboxes(self):
+        """Load the manual segmentation masks from 3D images to get bounding boxes on the fly."""
+        # WARNING!: not tested on non-square images, some of the axes in the top/left/bottom/right detection may be wrong
+        print(f'Loading bboxes from manual segmentations for {self.dataset} data ... ')
+        reader = NIIReader()
+        base_folder = f'/media/y4tsu/ml_data/cmr/3D/{self.dataset}'
+        roots = sorted(os.listdir(base_folder))
+        out = {}
 
-        with open(f'bbox_{self.dataset}.csv', 'r') as f:
-            reader = csv.reader(f)
-            next(reader)
-            for bbox in reader:
-                bbox_dict[bbox[0]] = {
-                    'top': bbox[1],
-                    'left': bbox[2],
-                    'bottom': bbox[3],
-                    'right': bbox[4],
-                }
+        for i, root in enumerate(tqdm(roots)):
+            label = np.squeeze(reader.read(os.path.join(base_folder, root, f'{root}_SAX_mask2.nii.gz')))
+            binary_label = np.where(np.equal(label, 0), 0, 1)
 
-        return bbox_dict
+            # Order is: top, left, bottom, right
+            bbox = [label.shape[1] // 2, label.shape[0] // 2, label.shape[1] // 2, label.shape[0] // 2]
+
+            # Get top, left, bottom and right extents of the label on each slice
+            for j in range(binary_label.shape[2]):
+                curr = binary_label[..., j]
+                try:
+                    top = np.where(np.any(curr == 1, axis=1))[0][0]
+                except IndexError:
+                    continue
+                left = np.where(np.any(curr == 1, axis=0))[0][0]
+                bottom = curr.shape[0] - np.where(np.any(curr[::-1, ...] == 1, axis=1))[0][0]
+                right = curr.shape[1] - np.where(np.any(curr[..., ::-1] == 1, axis=0))[0][0]
+                if top < bbox[0]:
+                    bbox[0] = top
+                if left < bbox[1]:
+                    bbox[1] = left
+                if bottom > bbox[2]:
+                    bbox[2] = bottom
+                if right > bbox[3]:
+                    bbox[3] = right
+
+            # print(f'dims: {bbox[3] - bbox[1]} x {bbox[2] - bbox[0]}')
+            out[root] = {
+                'top': bbox[0],
+                'left': bbox[1],
+                'bottom': bbox[2],
+                'right': bbox[3],
+            }
+
+        return out
 
     def manual_crop(self, f, fname):
         """Crop the given image or label file, using the file name to get the bounding box info."""
         # Get the bounding box
-        bbox = self.manual_bboxes[fname.split('/')[-1].split('.')[0][:12]]
+        bbox = self.bboxes[fname.split('/')[-1].split('.')[0][:12]]
         top, left, bottom, right = [int(x) for x in (bbox['top'], bbox['left'], bbox['bottom'], bbox['right'])]
         # print(f'top: {top}, left: {left}, bottom: {bottom}, right: {right}')
 
@@ -204,49 +232,5 @@ def rotate_incorrect_orientations():
     plt.show()
 
 
-def get_bounding_boxes(dataset='train'):
-    """
-    Create a file with the bounding box info from the manual segmentations which can be used for image cropping.
-    """
-    # WARNING!: not tested on non-square images, some of the axes in the top/left/bottom/right detection may be wrong
-    reader = NIIReader()
-    base_folder = f'/media/y4tsu/ml_data/cmr/3D/{dataset}'
-    roots = sorted(os.listdir(base_folder))
-    out = [['fname', 'top', 'left', 'bottom', 'right']]
-
-    for i, root in enumerate(tqdm(roots)):
-        label = np.squeeze(reader.read(os.path.join(base_folder, root, f'{root}_SAX_mask2.nii.gz')))
-        binary_label = np.where(np.equal(label, 0), 0, 1)
-
-        # Order is: top, left, bottom, right
-        bbox = [label.shape[1] // 2, label.shape[0] // 2, label.shape[1] // 2, label.shape[0] // 2]
-
-        # Get top, left, bottom and right extents of the label on each slice
-        for j in range(binary_label.shape[2]):
-            curr = binary_label[..., j]
-            try:
-                top = np.where(np.any(curr == 1, axis=1))[0][0]
-            except IndexError:
-                continue
-            left = np.where(np.any(curr == 1, axis=0))[0][0]
-            bottom = curr.shape[0] - np.where(np.any(curr[::-1, ...] == 1, axis=1))[0][0]
-            right = curr.shape[1] - np.where(np.any(curr[..., ::-1] == 1, axis=0))[0][0]
-            if top < bbox[0]:
-                bbox[0] = top
-            if left < bbox[1]:
-                bbox[1] = left
-            if bottom > bbox[2]:
-                bbox[2] = bottom
-            if right > bbox[3]:
-                bbox[3] = right
-
-        print(f'dims: {bbox[3] - bbox[1]} x {bbox[2] - bbox[0]}')
-        out += [[root, *bbox]]
-
-    with open(f'bbox_{dataset}.csv', 'w') as f:
-        writer = csv.writer(f)
-        writer.writerows(out)
-
-
 if __name__ == '__main__':
-    get_bounding_boxes('val')
+    pass
