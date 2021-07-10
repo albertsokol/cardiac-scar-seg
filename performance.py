@@ -6,7 +6,7 @@ import json
 import numpy as np
 from tqdm import tqdm
 
-from predict import Predictor2D, Predictor3D, Predictor3DCascaded, Predictor3DShallow
+from predict import load_predictor
 
 
 if __name__ == '__main__':
@@ -20,19 +20,16 @@ if __name__ == '__main__':
     plane = train_config['plane']
 
     # Load the correct Predictor class for the given model type
+    p = load_predictor(predict_config, train_config)
     if train_config['model'] in ['UNet3D']:
-        p = Predictor3D(**predict_config, train_config=train_config)
         dims = '3D'
         plane = ''
     elif train_config['model'] in ['UNet3DShallow']:
-        p = Predictor3DShallow(**predict_config, train_config=train_config)
         dims = '3DShallow'
     elif train_config['model'] in ['CascadedUNet3D']:
-        p = Predictor3DCascaded(**predict_config, train_config=train_config)
         dims = '3D'
         plane = ''
     else:
-        p = Predictor2D(**predict_config, train_config=train_config)
         dims = '2D'
 
     # Get the names of all the scans we are interested in

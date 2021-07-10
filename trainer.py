@@ -65,6 +65,7 @@ class Trainer:
             assert plane in ["transverse", "sagittal",
                              "coronal"], "Plane must be one of: 'transverse', 'sagittal', 'coronal'"
 
+        self.data_path = data_path
         self.train_data_path = os.path.join(data_path, self.data_root, 'train', plane)
         self.val_data_path = os.path.join(data_path, self.data_root, 'val', plane)
         self.test_data_path = os.path.join(data_path, self.data_root, 'test', plane)
@@ -96,7 +97,7 @@ class Trainer:
         self.callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
                 self.model_save_path,
-                monitor='val_dice' if model not in ['CascadedUNet3D'] else 'val_general_out_dice',
+                monitor='val_scar' if model not in ['CascadedUNet3D'] else 'val_general_out_dice',
                 save_best_only=True,
                 verbose=1,
                 mode='max',
@@ -114,6 +115,7 @@ class Trainer:
 
         # Set up generators
         self.train_gen = self.gen_dict[self.dimensionality](
+            data_path,
             self.train_data_path,
             batch_size,
             image_size,
@@ -124,6 +126,7 @@ class Trainer:
             combine_labels=combine_labels,
         )
         self.val_gen = self.gen_dict[self.dimensionality](
+            data_path,
             self.val_data_path,
             batch_size,
             image_size,

@@ -7,7 +7,21 @@ from scipy.special import softmax
 
 from metrics import DiceMetric, ClassWiseDiceMetric
 from readers import NIIReader, NPYReader
-from util import Cropper
+from cropper import Cropper
+
+
+def load_predictor(predict_config, train_config):
+    """Return the correct type of Predictor class for the given model type."""
+    if train_config['model'] in ['UNet3D']:
+        p = Predictor3D(**predict_config, train_config=train_config)
+    elif train_config['model'] in ['UNet3DShallow']:
+        p = Predictor3DShallow(**predict_config, train_config=train_config)
+    elif train_config['model'] in ['CascadedUNet3D']:
+        p = Predictor3DCascaded(**predict_config, train_config=train_config)
+    else:
+        p = Predictor2D(**predict_config, train_config=train_config)
+
+    return p
 
 
 class __Predictor:
@@ -25,7 +39,7 @@ class __Predictor:
 
         self.use_cropper = train_config['use_cropper']
         if self.use_cropper:
-            self.cropper = Cropper(dataset, train_config['use_cropper'])
+            self.cropper = Cropper(data_path, dataset, train_config['use_cropper'])
 
     @staticmethod
     def load_model(model_path):
@@ -36,7 +50,7 @@ class __Predictor:
             custom_objects={
                 'DiceMetric': DiceMetric,
                 'ClassWiseDiceMetric': ClassWiseDiceMetric,
-            }
+            },
         )
 
     def get_one_hot(self, y_true, y_pred):
@@ -136,9 +150,8 @@ class Predictor3D(__Predictor):
         pred_label = self.model.predict(image)
         pred_label = np.squeeze(np.argmax(pred_label, axis=-1))
 
-        print(self.calculate_dice(label, pred_label))
-
         if display:
+            print(self.calculate_dice(label, pred_label))
             self.display(image, label, pred_label)
 
         return image, label, pred_label
@@ -172,6 +185,11 @@ class Predictor2D(__Predictor):
                        for x in sorted(os.listdir(image_folder)) if 'image' in x]
         label_paths = [os.path.join(self.data_path, label_folder, x)
                        for x in sorted(os.listdir(label_folder)) if 'label' in x]
+
+        if not image_paths:
+            raise AttributeError(f"No images found at {image_folder}")
+        if not label_paths:
+            raise AttributeError(f"No labels found at {label_folder}")
 
         images = np.empty([len(image_paths), *self.image_size, 1], dtype=np.float32)
         labels = np.empty([len(label_paths), *self.image_size], dtype=np.int8)
@@ -211,9 +229,8 @@ class Predictor2D(__Predictor):
         label = np.moveaxis(labels, [0, 1, 2], [2, 0, 1])
         pred_label = np.moveaxis(pred_label, [0, 1, 2], [2, 0, 1])
 
-        print(self.calculate_dice(label, pred_label))
-
         if display:
+            print(self.calculate_dice(label, pred_label))
             self.display(image, label, pred_label)
 
         return image, label, pred_label
@@ -337,9 +354,8 @@ class Predictor3DShallow(__Predictor):
         )
         pred_label[..., -1] = np.argmax(softmax(pred_logits[-1][..., 2, :], axis=-1), axis=-1)
 
-        print(self.calculate_dice(label, pred_label))
-
         if display:
+            print(self.calculate_dice(label, pred_label))
             self.display(image, label, pred_label)
 
         return image, label, pred_label
@@ -386,13 +402,5 @@ if __name__ == '__main__':
     with open(os.path.join(predict_config['model_path'], 'train_config.json'), 'r') as train_config_file:
         train_config = json.load(train_config_file)
 
-    if train_config['model'] in ['UNet3D']:
-        p = Predictor3D(**predict_config, train_config=train_config)
-    elif train_config['model'] in ['UNet3DShallow']:
-        p = Predictor3DShallow(**predict_config, train_config=train_config)
-    elif train_config['model'] in ['CascadedUNet3D']:
-        p = Predictor3DCascaded(**predict_config, train_config=train_config)
-    else:
-        p = Predictor2D(**predict_config, train_config=train_config)
-
+    p = load_predictor(predict_config, train_config)
     p.predict(display=True)

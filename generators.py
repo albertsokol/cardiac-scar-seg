@@ -5,12 +5,13 @@ from tensorflow import one_hot
 from tensorflow.keras.utils import Sequence
 
 from readers import NIIReader, NPYReader
-from util import Cropper
+from cropper import Cropper
 
 
 class __Generator(Sequence):
     def __init__(
         self,
+        generic_data_path,
         data_path,
         batch_size,
         image_size,
@@ -22,7 +23,8 @@ class __Generator(Sequence):
         combine_labels,
     ):
         # Set up image filenames and indexing
-        self.data_path = data_path
+        self.generic_data_path = generic_data_path  # root of all data folders
+        self.data_path = data_path  # model and plane specific path
         self.dataset = dataset
         self.image_fnames = [os.path.join(data_path, x, f'{x}_SAX.nii.gz') for x in sorted(os.listdir(data_path))]
         self.label_fnames = [os.path.join(data_path, x, f'{x}_SAX_mask2.nii.gz') for x in sorted(os.listdir(data_path))]
@@ -32,7 +34,7 @@ class __Generator(Sequence):
         # Image handling
         self.augmenter = augmenter
         if use_cropper:
-            self.cropper = Cropper(dataset, mode=use_cropper)
+            self.cropper = Cropper(generic_data_path, dataset, mode=use_cropper)
 
         # Model parameters
         self.batch_size = batch_size
@@ -138,6 +140,7 @@ class Generator3D(__Generator):
     """ Class for the 3D image and label generator. """
     def __init__(
         self,
+        generic_data_path,
         data_path,
         batch_size,
         image_size,
@@ -149,6 +152,7 @@ class Generator3D(__Generator):
         combine_labels=None,
     ):
         super().__init__(
+            generic_data_path,
             data_path,
             batch_size,
             image_size,
@@ -166,6 +170,7 @@ class Generator2D(__Generator):
     """ Class for the 2D image and label generator. """
     def __init__(
         self,
+        generic_data_path,
         data_path,
         batch_size,
         image_size,
@@ -177,6 +182,7 @@ class Generator2D(__Generator):
         combine_labels=None,
     ):
         super().__init__(
+            generic_data_path,
             data_path,
             batch_size,
             image_size,
@@ -209,6 +215,7 @@ class Generator2D(__Generator):
 class __CascadedGenerator(Sequence):
     def __init__(
         self,
+        generic_data_path,
         data_path,
         batch_size,
         image_size,
@@ -317,6 +324,7 @@ class __CascadedGenerator(Sequence):
 class CascadedGenerator3D(__CascadedGenerator):
     def __init__(
         self,
+        generic_data_path,
         data_path,
         batch_size,
         image_size,
@@ -327,6 +335,7 @@ class CascadedGenerator3D(__CascadedGenerator):
         combine_labels=None,
     ):
         super().__init__(
+            generic_data_path,
             data_path,
             batch_size,
             image_size,
@@ -342,6 +351,7 @@ class CascadedGenerator3D(__CascadedGenerator):
 class CascadedGenerator2D(__CascadedGenerator):
     def __init__(
             self,
+            generic_data_path,
             data_path,
             batch_size,
             image_size,
@@ -352,6 +362,7 @@ class CascadedGenerator2D(__CascadedGenerator):
             combine_labels=None,
     ):
         super().__init__(
+            generic_data_path,
             data_path,
             batch_size,
             image_size,
