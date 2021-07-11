@@ -313,6 +313,49 @@ class Predictor3DShallow(__Predictor):
 
         return images, labels
 
+    def aggregate_slice_logits(self, pred_logits, image_depth, slice_depth=3):
+        """Combine logits by averaging and re-construct a full 3D predicted label from slices."""
+        if slice_depth % 2 != 1:
+            raise AttributeError(f'slice_depth must be an odd int currently - but received {slice_depth}')
+
+        # Initialise with empty array
+        pred_label = np.empty([*self.image_size[:2], image_depth + slice_depth - 1], dtype=np.int8)
+
+        # Construct the predicted label slice-wise
+        all_ims = list(range(image_depth))
+        end_img_idx = 0
+
+        for i in range(image_depth + slice_depth - 1):
+            start_img_idx = max(i - slice_depth + 1, 0)
+            if i < image_depth:
+                end_img_idx += 1
+
+            # Get the pred label outputs to be referenced for the current slice
+            curr_ims = all_ims[start_img_idx:end_img_idx]
+
+            # Get the slice index of each pred label output for the current slice
+            pairs = []
+            if i < image_depth:
+                for j, k in enumerate(reversed(range(len(curr_ims)))):
+                    pairs += [[curr_ims[j], k]]
+            else:
+                for j, k in enumerate(reversed(range(slice_depth - len(curr_ims), slice_depth))):
+                    pairs += [[curr_ims[j], k]]
+
+            # Pull the logits from the correct predicted logits image and slice
+            curr_slices = [pred_logits[j][..., k, :] for (j, k) in pairs]
+
+            # Get the mean of the logits
+            curr_logits = np.zeros([*curr_slices[0].shape])
+            for s in curr_slices:
+                curr_logits += s
+            curr_logits /= float(len(curr_slices))
+
+            # Apply softmax and argmax to the logits to get the predicted labels for the current slice
+            pred_label[..., i] = np.argmax(softmax(curr_logits, axis=-1), axis=-1)
+
+        return pred_label
+
     def predict(self, fname=None, display=False):
         """Return logits only rather than the softmax output."""
         images, labels = self.load_image_label(fname)
@@ -325,10 +368,9 @@ class Predictor3DShallow(__Predictor):
             curr_pred = pred_model.predict(image[np.newaxis, ...])
             pred_logits += [np.squeeze(curr_pred)]
 
-        # Turn these slices into an actual set of image, label and pred_labels
+        # Re-generate the image and labels slice-wise
         image = np.empty([*self.image_size[:2], len(images) + 2], dtype=np.float32)
         label = np.empty([*self.image_size[:2], len(images) + 2], dtype=np.int8)
-
         for i in range(len(images)):
             image[..., i + 1] = np.squeeze(images[i][..., 1, :])
             label[..., i + 1] = labels[i][..., 1]
@@ -337,22 +379,7 @@ class Predictor3DShallow(__Predictor):
         label[..., 0] = labels[0][..., 0]
         label[..., -1] = labels[-1][..., 2]
 
-        # Combine the labels using average logits then softmax for each slice of the output
-        pred_label = np.empty([*self.image_size[:2], len(images) + 2], dtype=np.int8)
-        pred_label[..., 0] = np.argmax(softmax(pred_logits[0][..., 0, :], axis=-1), axis=-1)
-        pred_label[..., 1] = np.argmax(
-            softmax((pred_logits[0][..., 1, :] + pred_logits[1][..., 0, :]) / 2., axis=-1), axis=-1
-        )
-        for i in range(2, len(images)):
-            pred_label[..., i] = np.argmax(
-                softmax(
-                    (pred_logits[i - 2][..., 2, :] + pred_logits[i - 1][..., 1, :] + pred_logits[i][..., 0, :]) / 3., axis=-1
-                ), axis=-1
-            )
-        pred_label[..., -2] = np.argmax(
-            softmax((pred_logits[-2][..., 2, :] + pred_logits[-1][..., 1, :]) / 2., axis=-1), axis=-1
-        )
-        pred_label[..., -1] = np.argmax(softmax(pred_logits[-1][..., 2, :], axis=-1), axis=-1)
+        pred_label = self.aggregate_slice_logits(pred_logits, len(images), self.image_size[-1])
 
         if display:
             print(self.calculate_dice(label, pred_label))

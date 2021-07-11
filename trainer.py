@@ -316,8 +316,14 @@ class Trainer:
         plot_model(model, f'{self.model}_plot.png', show_shapes=True)
         model.summary(line_length=160)
 
-        # TODO: implement other models
         # TODO: assertions on all config stuff to prevent naughty values being given
+        # TODO: fix plot function
+        # TODO: cascaded networks: utilise masking of the input based on n previous models (customisable)
+        # TODO: anatomical auto-encoder if time allows
+        # TODO: slice quality weighted loss functions
+        # TODO: add black space instead of removing non-square images (could cause bbox problems)
+        # TODO: customisable depth UNet3DShallow
+        # TODO: could try replacing UNet3DShallow with e.g., VNet if time allows
 
         # Learning rate decay: will be used if not 0, otherwise use static LR
         if self.lr_decay:
