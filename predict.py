@@ -313,6 +313,19 @@ class Predictor3DShallow(__Predictor):
 
         return images, labels
 
+    def construct_slice_wise(self, f_list, image_depth, slice_depth):
+        """Given the images or labels list, re-construct the image/label slice by slice to the full tensor."""
+        f = np.empty([*self.image_size[:2], image_depth + slice_depth - 1], dtype=np.float32)
+        j = 1
+        for i in range(f.shape[-1]):
+            if i < image_depth:
+                f[..., i] = np.squeeze(f_list[i])[..., 0]
+            else:
+                f[..., i] = np.squeeze(f_list[image_depth - 1])[..., j]
+                j += 1
+
+        return f
+
     def aggregate_slice_logits(self, pred_logits, image_depth, slice_depth=3):
         """Combine logits by averaging and re-construct a full 3D predicted label from slices."""
         if slice_depth % 2 != 1:
@@ -369,16 +382,8 @@ class Predictor3DShallow(__Predictor):
             pred_logits += [np.squeeze(curr_pred)]
 
         # Re-generate the image and labels slice-wise
-        image = np.empty([*self.image_size[:2], len(images) + 2], dtype=np.float32)
-        label = np.empty([*self.image_size[:2], len(images) + 2], dtype=np.int8)
-        for i in range(len(images)):
-            image[..., i + 1] = np.squeeze(images[i][..., 1, :])
-            label[..., i + 1] = labels[i][..., 1]
-        image[..., 0] = np.squeeze(images[0][..., 0, :])
-        image[..., -1] = np.squeeze(images[-1][..., 2, :])
-        label[..., 0] = labels[0][..., 0]
-        label[..., -1] = labels[-1][..., 2]
-
+        image = self.construct_slice_wise(images, len(images), self.image_size[-1])
+        label = self.construct_slice_wise(labels, len(images), self.image_size[-1])
         pred_label = self.aggregate_slice_logits(pred_logits, len(images), self.image_size[-1])
 
         if display:

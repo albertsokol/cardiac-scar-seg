@@ -322,7 +322,6 @@ class Trainer:
         # TODO: anatomical auto-encoder if time allows
         # TODO: slice quality weighted loss functions
         # TODO: add black space instead of removing non-square images (could cause bbox problems)
-        # TODO: customisable depth UNet3DShallow
         # TODO: could try replacing UNet3DShallow with e.g., VNet if time allows
 
         # Learning rate decay: will be used if not 0, otherwise use static LR
