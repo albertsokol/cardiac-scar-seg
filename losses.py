@@ -101,6 +101,7 @@ class WeightedSoftmaxDiceLoss(__Loss):
         super().__init__(batch_size, image_size)
         self.label_weights = label_weights
         self.dice_weight = dice_weight
+        # mask dict here?
 
     def call(self, *args, **kwargs):
         y_true, y_pred = args[0], args[1]

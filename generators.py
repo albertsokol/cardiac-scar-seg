@@ -1,18 +1,22 @@
 import os
 
 import numpy as np
+from matplotlib import pyplot as plt
 from tensorflow import one_hot
 from tensorflow.keras.utils import Sequence
 
 from readers import NIIReader, NPYReader
 from cropper import Cropper
+from masker import Masker
 
 
 class __Generator(Sequence):
     def __init__(
         self,
+        model_save_path,
         generic_data_path,
         data_path,
+        plane,
         batch_size,
         image_size,
         labels,
@@ -21,6 +25,7 @@ class __Generator(Sequence):
         augmenter,
         use_cropper,
         combine_labels,
+        cascade,
     ):
         # Set up image filenames and indexing
         self.generic_data_path = generic_data_path  # root of all data folders
@@ -31,10 +36,20 @@ class __Generator(Sequence):
         assert len(self.image_fnames) == len(self.label_fnames), "Number of image files and label files did not match!"
         self.index = np.arange(len(self.image_fnames))
 
-        # Image handling
+        # Image handling: augmentation, cropping and masking
         self.augmenter = augmenter
         if use_cropper:
             self.cropper = Cropper(generic_data_path, dataset, mode=use_cropper)
+
+        self.cascade = cascade
+        if cascade:
+            self.masker = Masker(
+                **cascade,
+                data_path=generic_data_path,
+                dataset=dataset,
+                folder=model_save_path,
+                plane=plane,
+            )
 
         # Model parameters
         self.batch_size = batch_size
@@ -140,8 +155,10 @@ class Generator3D(__Generator):
     """ Class for the 3D image and label generator. """
     def __init__(
         self,
+        model_save_path,
         generic_data_path,
         data_path,
+        plane,
         batch_size,
         image_size,
         labels,
@@ -150,10 +167,13 @@ class Generator3D(__Generator):
         augmenter=None,
         use_cropper=False,
         combine_labels=None,
+        cascade=None,
     ):
         super().__init__(
+            model_save_path,
             generic_data_path,
             data_path,
+            plane,
             batch_size,
             image_size,
             labels,
@@ -162,16 +182,27 @@ class Generator3D(__Generator):
             augmenter,
             use_cropper,
             combine_labels,
+            cascade,
         )
-        self.reader = NIIReader()
+        # TODO: if cascade -> need to use fnames from the mask folder instead - test this
+        if cascade:
+            self.reader = NPYReader()
+            self.image_fnames = [
+                os.path.join(model_save_path, 'mask', dataset, f'{x}_SAX.nii.gz')
+                for x in sorted(os.listdir(os.path.join(model_save_path, 'mask', dataset)))
+            ]
+        else:
+            self.reader = NIIReader()
 
 
 class Generator2D(__Generator):
     """ Class for the 2D image and label generator. """
     def __init__(
         self,
+        model_save_path,
         generic_data_path,
         data_path,
+        plane,
         batch_size,
         image_size,
         labels,
@@ -180,10 +211,13 @@ class Generator2D(__Generator):
         augmenter=None,
         use_cropper=False,
         combine_labels=None,
+        cascade=None,
     ):
         super().__init__(
+            model_save_path,
             generic_data_path,
             data_path,
+            plane,
             batch_size,
             image_size,
             labels,
@@ -192,13 +226,8 @@ class Generator2D(__Generator):
             augmenter,
             use_cropper,
             combine_labels,
+            cascade,
         )
-        self.image_fnames = [
-            [os.path.join(data_path, x, f'{x}_{i:03}_image.npy')
-             for i in range(len(sorted(os.listdir(os.path.join(data_path, x)))) // 2)]
-            for x in sorted(os.listdir(data_path))
-        ]
-        self.image_fnames = [x for y in self.image_fnames for x in y]
         self.label_fnames = [
             [os.path.join(data_path, x, f'{x}_{i:03}_label.npy')
              for i in range(len(sorted(os.listdir(os.path.join(data_path, x)))) // 2)]
@@ -206,7 +235,23 @@ class Generator2D(__Generator):
         ]
         self.label_fnames = [x for y in self.label_fnames for x in y]
 
-        assert len(self.image_fnames) == len(self.label_fnames), "Number of image files and label files did not match!"
+        if cascade:
+            self.image_fnames = [
+                [os.path.join(model_save_path, 'mask', dataset, x, f'{x}_{i:03}_image.npy')
+                 for i in range(len(sorted(os.listdir(os.path.join(model_save_path, 'mask', dataset, x)))))]
+                for x in sorted(os.listdir(os.path.join(model_save_path, 'mask', dataset)))
+            ]
+            self.image_fnames = [x for y in self.image_fnames for x in y]
+        else:
+            self.image_fnames = [
+                [os.path.join(data_path, x, f'{x}_{i:03}_image.npy')
+                 for i in range(len(sorted(os.listdir(os.path.join(data_path, x)))) // 2)]
+                for x in sorted(os.listdir(data_path))
+            ]
+            self.image_fnames = [x for y in self.image_fnames for x in y]
+
+        assert len(self.image_fnames) == len(self.label_fnames), \
+            f"Number of image files and label files did not match! {len(self.image_fnames)} images vs. {len(self.label_fnames)} labels ... "
         self.index = np.arange(len(self.image_fnames))
 
         self.reader = NPYReader()

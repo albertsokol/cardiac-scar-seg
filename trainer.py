@@ -33,6 +33,7 @@ class Trainer:
         warmup,
         labels,
         combine_labels,
+        cascade,
         loss_fn,
         augmentation,
     ):
@@ -41,6 +42,9 @@ class Trainer:
         """
         # File path parameters
         self.model_save_path = model_save_path
+        if not os.path.exists(model_save_path):
+            os.mkdir(model_save_path)
+
         if model in ['UNet3D']:
             self.dimensionality = '3D'
             self.data_root = '3D'
@@ -97,7 +101,7 @@ class Trainer:
         self.callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
                 self.model_save_path,
-                monitor='val_scar' if model not in ['CascadedUNet3D'] else 'val_general_out_dice',
+                monitor='val_dice' if model not in ['CascadedUNet3D'] else 'val_general_out_dice',
                 save_best_only=True,
                 verbose=1,
                 mode='max',
@@ -115,8 +119,10 @@ class Trainer:
 
         # Set up generators
         self.train_gen = self.gen_dict[self.dimensionality](
+            model_save_path,
             data_path,
             self.train_data_path,
+            plane,
             batch_size,
             image_size,
             labels,
@@ -124,10 +130,13 @@ class Trainer:
             augmenter=self.augmenter,
             use_cropper=use_cropper,
             combine_labels=combine_labels,
+            cascade=cascade,
         )
         self.val_gen = self.gen_dict[self.dimensionality](
+            model_save_path,
             data_path,
             self.val_data_path,
+            plane,
             batch_size,
             image_size,
             labels,
@@ -135,6 +144,7 @@ class Trainer:
             shuffle=False,
             use_cropper=use_cropper,
             combine_labels=combine_labels,
+            cascade=cascade,
         )
 
         # Labels

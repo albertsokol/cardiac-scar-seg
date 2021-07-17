@@ -1,5 +1,5 @@
 {
-  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/2Dtr_lv_myo_lumen",
+  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/2Dtr_left_right_aorta",
   "data_path": "/media/y4tsu/ml_data/cmr/",
   "model": "UNet2D",
   "plane": "transverse",
@@ -22,14 +22,17 @@
     "7": "aorta"
   },
   "combine_labels": [
-    ["bg", "rv lumen", "rv myo", "aorta"],
-    ["lv myo", "scar"],
-    ["lv lumen", "pap"]
+    ["bg"],
+    ["rv lumen", "rv myo"],
+    ["lv lumen", "lv myo", "scar", "pap"],
+    ["aorta"]
   ],
-  "cascade": {
-      "model_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/2Dtr_left_right_aorta",
-      "keep_labels": [2]
-  },
+  "cascade": [
+    {
+      "model_path": "",
+      "keep_labels": []
+    }
+  ],
   "augmentation": {
     "zoom": [0.96, 1.04],
     "rotate": false,

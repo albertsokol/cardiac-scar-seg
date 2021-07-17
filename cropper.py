@@ -146,11 +146,6 @@ class Cropper:
             # Now find the bounding box around the segmentation mask
             bbox = self.__find_bbox(pred_label)
 
-            if root == "20CA015_N001":
-                print(bbox)
-                NIIReader().scroll_view(np.concatenate((label, pred_label)))
-                exit()
-
             out[root] = {
                 'top': bbox[0],
                 'left': bbox[1],

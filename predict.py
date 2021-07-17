@@ -109,6 +109,7 @@ class Predictor3D(__Predictor):
                              sorted(os.listdir(self.data_path))]
 
         self.model = self.load_model(model_path)
+        self.dimensionality = '3D'
 
     def load_image_label(self, fname):
         """ Loads the image and label files. """
@@ -167,6 +168,7 @@ class Predictor2D(__Predictor):
         self.label_fnames = [os.path.join(self.data_path, x) for x in sorted(os.listdir(self.data_path))]
 
         self.model = self.load_model(model_path)
+        self.dimensionality = '2D'
 
     def load_image_label(self, fname):
         """ Loads the image and label files. """
@@ -267,6 +269,7 @@ class Predictor3DShallow(__Predictor):
         self.label_fnames = [os.path.join(self.data_path, x) for x in sorted(os.listdir(self.data_path))]
 
         self.model = self.load_model(model_path)
+        self.dimensionality = '3DShallow'
 
     def load_image_label(self, fname):
         """ Loads the image and label files. """
@@ -413,9 +416,8 @@ class Predictor3DCascaded(Predictor3D):
         # And add in papillary muscle predictions
         pred_label = np.where(np.greater_equal(np.squeeze(predictions[2]), 0.5), 6, pred_label)
 
-        print(self.calculate_dice(label, pred_label))
-
         if display:
+            print(self.calculate_dice(label, pred_label))
             self.display(image, label, pred_label)
 
         return image, label, pred_label
