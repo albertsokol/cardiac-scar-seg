@@ -6,6 +6,7 @@ import numpy as np
 from tqdm import tqdm
 
 from readers import NIIReader
+from util import PColour
 
 
 class Masker:
@@ -38,8 +39,6 @@ class Masker:
         if not os.path.exists(os.path.join(folder, 'mask', dataset)):
             os.mkdir(os.path.join(folder, 'mask', dataset))
         self.mask_folder = os.path.join(folder, 'mask', dataset)
-
-        self.create_masks()
 
     def create_fname_folder(self, fname):
         """Create folder to store masks for the current fname."""
@@ -78,6 +77,11 @@ class Masker:
 
     def create_masks(self):
         """Create masks for the selected dataset of the Masker, e.g., training or validation."""
+        if len(os.listdir(self.mask_folder)) != 0:
+            print(f"{PColour.OKCYAN}Using existing masks at {self.mask_folder} therefore new masking was skipped, if"
+                  f" this is incorrect then delete the files at {self.mask_folder} to re-generate. {PColour.ENDC}")
+            return
+
         from predict import load_predictor
 
         print(f'Predicting masks using model at {self.model_path} for {self.dataset} data ... ')
@@ -92,6 +96,7 @@ class Masker:
 
         with open(os.path.join(predict_config['model_path'], 'train_config.json'), 'r') as train_config_file:
             train_config = json.load(train_config_file)
+            print(f'Using training config for nested model: {train_config}')
 
         # Load the masking model as a Predictor object
         p = load_predictor(predict_config, train_config)

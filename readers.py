@@ -197,7 +197,7 @@ if __name__ == '__main__':
     #             np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}/{x}_{j:03}_label', label[:, :, j])
 
     # Save all 3D as depth=n slices to allow shuffled loading during training
-    depth = 5
+    depth = 3
     for g in ['train', 'val', 'test']:
         for x in tqdm(sorted(os.listdir(f'/media/y4tsu/ml_data/cmr/3D/{g}/'))):
             image_fname = os.path.join('/media/y4tsu/ml_data/cmr/3D/', g, x, f'{x}_SAX.nii.gz')

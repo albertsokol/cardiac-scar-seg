@@ -38,18 +38,18 @@ class __Generator(Sequence):
 
         # Image handling: augmentation, cropping and masking
         self.augmenter = augmenter
-        if use_cropper:
-            self.cropper = Cropper(generic_data_path, dataset, mode=use_cropper)
 
         self.cascade = cascade
         if cascade:
-            self.masker = Masker(
+            Masker(
                 **cascade,
                 data_path=generic_data_path,
                 dataset=dataset,
                 folder=model_save_path,
                 plane=plane,
-            )
+            ).create_masks()
+
+        self.cropper = Cropper(generic_data_path, dataset, mode=use_cropper) if use_cropper else False
 
         # Model parameters
         self.batch_size = batch_size
@@ -111,7 +111,7 @@ class __Generator(Sequence):
     def prepare_img(self, img, fname):
         """ Set the image to the correct size and dimensions for placement into the input tensor. """
         # If cropping, then crop the image here
-        if self.use_cropper:
+        if self.use_cropper and not self.cascade:
             img = self.cropper.crop(img, fname)
 
         # Resize to the input shape of the model

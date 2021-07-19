@@ -10,6 +10,19 @@ from scipy.ndimage import rotate
 from readers import NIIReader
 
 
+class PColour:
+    """Strings denoting pre-saved colours for printing warnings etc."""
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+    UNDERLINE = '\033[4m'
+
+
 def rotate_incorrect_orientations():
     """
     Rotate a list of manually specified images by 90 degrees anti-clockwise so that all images are in the same

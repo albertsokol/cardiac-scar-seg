@@ -3,6 +3,7 @@ import numpy as np
 import tensorflow as tf
 import json
 import os
+import time
 from tqdm import tqdm
 
 from tensorflow.keras.utils import plot_model
@@ -13,6 +14,7 @@ from generators import Generator3D, Generator2D, CascadedGenerator3D
 from losses import SoftmaxLoss, WeightedSoftmaxLoss, DiceLoss, WeightedSoftmaxDiceLoss, CascadedWeightedSoftmaxDiceLoss
 from metrics import DiceMetric, ClassWiseDiceMetric
 from models import UNet3D, UNet2D, UNet3DShallow, CascadedUNet3D
+from util import PColour
 
 
 class Trainer:
@@ -330,6 +332,7 @@ class Trainer:
         # TODO: fix plot function
         # TODO: cascaded networks: utilise masking of the input based on n previous models (customisable)
         # TODO: anatomical auto-encoder if time allows
+        # TODO: de-noising auto-encoder if time allows
         # TODO: slice quality weighted loss functions
         # TODO: add black space instead of removing non-square images (could cause bbox problems)
         # TODO: could try replacing UNet3DShallow with e.g., VNet if time allows
@@ -372,6 +375,8 @@ class Trainer:
             metrics=metrics,
         )
 
+        start = time.time()
+
         history = model.fit(
             self.train_gen,
             validation_data=self.val_gen,
@@ -380,6 +385,8 @@ class Trainer:
             validation_steps=len(self.val_gen.image_fnames) // self.batch_size,
             callbacks=self.callbacks,
         )
+
+        print(f'{PColour.OKGREEN}Finished training - took {(time.time() - start) / 60.:.2f} minutes.{PColour.ENDC}')
 
         # Save the config that was used so that e.g., image size can be retrieved later for prediction
         with open(f'{self.model_save_path}/train_config.json', 'w') as f:

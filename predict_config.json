@@ -1,5 +1,5 @@
 {
-  "model_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3Dexp_tr_depth_5",
+  "model_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3Dtr_lv_myo_scar",
   "data_path": "/media/y4tsu/ml_data/cmr",
   "dataset": "val"
 }

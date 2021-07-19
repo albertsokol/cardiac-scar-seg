@@ -5,9 +5,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy.special import softmax
 
+from cropper import Cropper
+from masker import Masker
 from metrics import DiceMetric, ClassWiseDiceMetric
 from readers import NIIReader, NPYReader
-from cropper import Cropper
 
 
 def load_predictor(predict_config, train_config):
@@ -28,10 +29,16 @@ class __Predictor:
     def __init__(self, data_path, dataset, train_config):
         self.rng = np.random.default_rng()
 
+        self.model_path = train_config['model_save_path']
         self.model_name = train_config['model']
         self.image_size = train_config['image_size']
         self.labels_dict = train_config['labels']
+        self.label_indices = {self.labels_dict[k]: int(k) for k in self.labels_dict}
         self.combine_labels = train_config['combine_labels']
+        self.cascade = False if not train_config['cascade'] else train_config['cascade']
+
+        self.dimensionality = None
+        self.plane = ""
 
         self.data_path = data_path
         assert dataset in ["train", "val", "test"], f"dataset must be one of: 'train', 'val', 'test'; but got {dataset}"
@@ -52,6 +59,17 @@ class __Predictor:
                 'ClassWiseDiceMetric': ClassWiseDiceMetric,
             },
         )
+
+    def apply_label_combine(self, label):
+        """Combine each list of labels in self.combine_labels into a single label."""
+        out = np.zeros([*label.shape, len(self.combine_labels)], dtype=np.int8)
+
+        # Iterate over each list in combine_labels and update the zeros vector to 1 where that label is present
+        for i, combo in enumerate(self.combine_labels):
+            idxs = np.array([self.label_indices[x] for x in combo])
+            out[..., i] = np.where(np.isin(label, idxs), 1, 0)
+
+        return np.argmax(out, axis=-1)
 
     def get_one_hot(self, y_true, y_pred):
         """Get one-hot encoding representations of labels and predictions."""
@@ -96,41 +114,91 @@ class __Predictor:
         """
         self.reader.scroll_view(np.concatenate((label, pred_label)), plane=plane)
 
+    @staticmethod
+    def __check_image_label_paths(image_paths, image_folder, label_paths, label_folder):
+        """Check that the image and label paths for a given scan are correct."""
+        if not image_paths:
+            raise AttributeError(f"No images found at {image_folder}")
+        if not label_paths:
+            raise AttributeError(f"No labels found at {label_folder}")
+        assert len(image_paths) == len(label_paths), \
+            f"image and label size mismatch: image length {len(image_paths)}, label length {len(label_paths)}"
+
+    def _get_folder_paths(self, fname):
+        """Get the correct image folder and label folder name plus the correct suffix for loading."""
+        # Define paths - should be the path to the folder containing the images
+        if fname is None:
+            idx = self.rng.integers(0, len(self.image_fnames))
+            image_folder = self.image_fnames[idx]
+            label_folder = self.label_fnames[idx]
+        else:
+            image_folder = fname
+            label_folder = os.path.join(self.data_path, self.dimensionality, self.dataset, self.plane, fname.split("/")[-1])
+
+        suffix = image_folder.split("/")[-1]
+
+        return image_folder, label_folder, suffix
+
+    def _get_image_label_paths(self, image_folder, label_folder, suffix):
+        """Get the paths to all components of a scan and label (the image and label sub-parts)."""
+        if not self.cascade:
+            image_paths = [os.path.join(image_folder, x)
+                           for x in sorted(os.listdir(image_folder)) if '_image.' in x]
+        else:
+            image_paths = [os.path.join(self.model_path, 'mask', self.dataset, suffix, x)
+                           for x in sorted(os.listdir(os.path.join(
+                                self.model_path, 'mask', self.dataset, suffix
+                           ))) if '_image.' in x]
+
+        # If masked images are required and do not exist, then create them here
+        if self.cascade and not image_paths:
+            Masker(
+                **self.cascade,
+                data_path=self.data_path,
+                dataset=self.dataset,
+                folder=self.model_path,
+                plane=self.plane,
+            ).create_masks()
+            image_paths = [os.path.join(self.model_path, 'mask', self.dataset, suffix, x)
+                           for x in sorted(os.listdir(os.path.join(
+                                self.model_path, 'mask', self.dataset, suffix
+                           ))) if 'image' in x]
+
+        label_paths = [os.path.join(label_folder, x)
+                       for x in sorted(os.listdir(label_folder)) if '_label.' in x]
+
+        self.__check_image_label_paths(image_paths, image_folder, label_paths, label_folder)
+
+        return image_paths, label_paths
+
 
 class Predictor3D(__Predictor):
     def __init__(self, data_path, dataset, model_path, train_config):
         super().__init__(data_path, dataset, train_config)
-        self.data_path = os.path.join(data_path, '3D', self.dataset)
+        self.full_data_path = os.path.join(data_path, '3D', self.dataset)
 
-        self.reader = NIIReader()
-        self.image_fnames = [os.path.join(self.data_path, x, f'{x}_SAX.nii.gz') for x in
-                             sorted(os.listdir(self.data_path))]
-        self.label_fnames = [os.path.join(self.data_path, x, f'{x}_SAX_mask2.nii.gz') for x in
-                             sorted(os.listdir(self.data_path))]
+        self.reader = NIIReader() if not self.cascade else NPYReader()
+
+        # TODO: test this all works ok
+        self.image_fnames = [os.path.join(self.full_data_path, x) for x in
+                             sorted(os.listdir(self.full_data_path))]
+        self.label_fnames = [os.path.join(self.full_data_path, x) for x in
+                             sorted(os.listdir(self.full_data_path))]
 
         self.model = self.load_model(model_path)
         self.dimensionality = '3D'
 
     def load_image_label(self, fname):
         """ Loads the image and label files. """
-        # Define paths
-        if fname is None:
-            idx = self.rng.integers(0, len(self.image_fnames))
-            image_path = self.image_fnames[idx]
-            label_path = self.label_fnames[idx]
-            suffix = image_path.split('/')[-1].split('.')[0][:12]
-            print(image_path)
-        else:
-            suffix = fname.split("/")[-1]
-            image_path = os.path.join(fname, f'{suffix}_SAX.nii.gz')
-            label_path = os.path.join(fname, f'{suffix}_SAX_mask2.nii.gz')
+        image_folder, label_folder, suffix = self.__get_image_label_folder_paths(fname)
 
         # Load image and label
-        image = self.reader.read(image_path)
-        label = self.reader.read(label_path)
+        image = self.reader.read(os.path.join(image_folder, f'{suffix}_SAX.nii.gz'))
+        label = self.reader.read(os.path.join(label_folder, f'{suffix}_SAX_mask2.nii.gz'))
 
         if self.use_cropper:
-            image = self.cropper.crop(image, suffix)
+            if not self.cascade:
+                image = self.cropper.crop(image, suffix)
             label = self.cropper.crop(label, suffix)
 
         # Set to the correct dimensions
@@ -161,37 +229,24 @@ class Predictor3D(__Predictor):
 class Predictor2D(__Predictor):
     def __init__(self, data_path, dataset, model_path, train_config):
         super().__init__(data_path, dataset, train_config)
-        self.data_path = os.path.join(data_path, '2D', self.dataset, train_config["plane"])
+        self.full_data_path = os.path.join(data_path, '2D', self.dataset, train_config["plane"])
 
         self.reader = NPYReader()
-        self.image_fnames = [os.path.join(self.data_path, x) for x in sorted(os.listdir(self.data_path))]
-        self.label_fnames = [os.path.join(self.data_path, x) for x in sorted(os.listdir(self.data_path))]
+        if not self.cascade:
+            self.image_fnames = [os.path.join(self.full_data_path, x) for x in sorted(os.listdir(self.full_data_path))]
+        else:
+            self.image_fnames = [os.path.join(self.model_path, 'mask', self.dataset, x)
+                                 for x in sorted(os.listdir(os.path.join(self.model_path, 'mask', self.dataset)))]
+        self.label_fnames = [os.path.join(self.full_data_path, x) for x in sorted(os.listdir(self.full_data_path))]
 
         self.model = self.load_model(model_path)
         self.dimensionality = '2D'
+        self.plane = train_config['plane']
 
     def load_image_label(self, fname):
         """ Loads the image and label files. """
-        # Define paths
-        if fname is None:
-            idx = self.rng.integers(0, len(self.image_fnames))
-            image_folder = self.image_fnames[idx]
-            label_folder = self.label_fnames[idx]
-        else:
-            image_folder = fname
-            label_folder = fname
-        suffix = image_folder.split("/")[-1]
-
-        # Load image and label
-        image_paths = [os.path.join(self.data_path, image_folder, x)
-                       for x in sorted(os.listdir(image_folder)) if 'image' in x]
-        label_paths = [os.path.join(self.data_path, label_folder, x)
-                       for x in sorted(os.listdir(label_folder)) if 'label' in x]
-
-        if not image_paths:
-            raise AttributeError(f"No images found at {image_folder}")
-        if not label_paths:
-            raise AttributeError(f"No labels found at {label_folder}")
+        image_folder, label_folder, suffix = self.__get_image_label_folder_paths(fname)
+        image_paths, label_paths = self.__get_image_label_paths(image_folder, label_folder, suffix)
 
         images = np.empty([len(image_paths), *self.image_size, 1], dtype=np.float32)
         labels = np.empty([len(label_paths), *self.image_size], dtype=np.int8)
@@ -201,7 +256,8 @@ class Predictor2D(__Predictor):
             label = self.reader.read(label_path)
 
             if self.use_cropper:
-                image = self.cropper.crop(image, suffix)
+                if not self.cascade:
+                    image = self.cropper.crop(image, suffix)
                 label = self.cropper.crop(label, suffix)
 
             # Set to the correct dimensions
@@ -230,6 +286,9 @@ class Predictor2D(__Predictor):
         image = np.moveaxis(np.squeeze(images), [0, 1, 2], [2, 0, 1])
         label = np.moveaxis(labels, [0, 1, 2], [2, 0, 1])
         pred_label = np.moveaxis(pred_label, [0, 1, 2], [2, 0, 1])
+
+        if self.combine_labels:
+            label = self.apply_label_combine(label)
 
         if display:
             print(self.calculate_dice(label, pred_label))
@@ -262,42 +321,33 @@ class Predictor2D(__Predictor):
 class Predictor3DShallow(__Predictor):
     def __init__(self, data_path, dataset, model_path, train_config):
         super().__init__(data_path, dataset, train_config)
-        self.data_path = os.path.join(data_path, '3DShallow', self.dataset, train_config["plane"])
+        self.full_data_path = os.path.join(data_path, '3DShallow', self.dataset, train_config["plane"])
 
         self.reader = NPYReader()
-        self.image_fnames = [os.path.join(self.data_path, x) for x in sorted(os.listdir(self.data_path))]
-        self.label_fnames = [os.path.join(self.data_path, x) for x in sorted(os.listdir(self.data_path))]
+        if not self.cascade:
+            self.image_fnames = [os.path.join(self.full_data_path, x) for x in sorted(os.listdir(self.full_data_path))]
+        else:
+            self.image_fnames = [os.path.join(self.model_path, 'mask', self.dataset, x)
+                                 for x in sorted(os.listdir(os.path.join(self.model_path, 'mask', self.dataset)))]
+        self.label_fnames = [os.path.join(self.full_data_path, x) for x in sorted(os.listdir(self.full_data_path))]
 
         self.model = self.load_model(model_path)
         self.dimensionality = '3DShallow'
+        self.plane = train_config['plane']
 
     def load_image_label(self, fname):
         """ Loads the image and label files. """
-        # Define paths
-        if fname is None:
-            idx = self.rng.integers(0, len(self.image_fnames))
-            image_folder = self.image_fnames[idx]
-            label_folder = self.label_fnames[idx]
-        else:
-            image_folder = fname
-            label_folder = fname
-        suffix = image_folder.split("/")[-1]
-
-        # Load image and label
-        image_paths = [os.path.join(self.data_path, image_folder, x)
-                       for x in sorted(os.listdir(image_folder)) if 'image' in x]
-        label_paths = [os.path.join(self.data_path, label_folder, x)
-                       for x in sorted(os.listdir(label_folder)) if 'label' in x]
-
-        images = []
-        labels = []
+        image_folder, label_folder, suffix = self._get_folder_paths(fname)
+        image_paths, label_paths = self._get_image_label_paths(image_folder, label_folder, suffix)
+        images, labels = [], []
 
         for i, (image_path, label_path) in enumerate(zip(image_paths, label_paths)):
             image = self.reader.read(image_path)
             label = self.reader.read(label_path)
 
             if self.use_cropper:
-                image = self.cropper.crop(image, suffix)
+                if not self.cascade:
+                    image = self.cropper.crop(image, suffix)
                 label = self.cropper.crop(label, suffix)
 
             # Set to the correct dimensions
@@ -388,6 +438,9 @@ class Predictor3DShallow(__Predictor):
         image = self.construct_slice_wise(images, len(images), self.image_size[-1])
         label = self.construct_slice_wise(labels, len(images), self.image_size[-1])
         pred_label = self.aggregate_slice_logits(pred_logits, len(images), self.image_size[-1])
+
+        if self.combine_labels:
+            label = self.apply_label_combine(label)
 
         if display:
             print(self.calculate_dice(label, pred_label))

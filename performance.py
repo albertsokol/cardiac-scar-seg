@@ -38,7 +38,10 @@ if __name__ == '__main__':
     print(roots)
 
     dices = 0
-    class_wise_dices = np.zeros([len(p.labels_dict)])
+    if p.combine_labels:
+        class_wise_dices = np.zeros([len(p.combine_labels)])
+    else:
+        class_wise_dices = np.zeros([len(p.labels_dict)])
 
     # Run the model in predictions mode and get the dice scores for each scan
     for root in tqdm(roots):
@@ -49,5 +52,9 @@ if __name__ == '__main__':
     # Print a report with the averages of those dice scores
     print(f'AVG DICE: {dices / len(roots)}')
 
-    for i, key in enumerate(p.labels_dict):
-        print(f'{p.labels_dict[key]:<10}: {class_wise_dices[i] / len(roots):.4f}')
+    if not p.combine_labels:
+        for i, key in enumerate(p.labels_dict):
+            print(f'{p.labels_dict[key]:<16}:  {class_wise_dices[i] / len(roots):.4f}')
+    else:
+        for i, label in enumerate(p.combine_labels):
+            print(f'{", ".join(label):<64}:  {class_wise_dices[i] / len(roots):.4f}')
