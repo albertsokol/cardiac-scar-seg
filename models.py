@@ -10,13 +10,14 @@ from tensorflow.keras import models
 
 class SegModel(ABC):
     """ Class implementing generic and common segmentation model methods. """
-    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size):
+    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size, transpose_kernel_size):
         self.input_size = input_size
         self.output_length = output_length
         self.quality_weighted_mode = quality_weighted_mode
         self.kernel_size = kernel_size
+        self.transpose_kernel_size = transpose_kernel_size
 
-    def define_architecture(self, model_input):
+    def define_architecture(self, model_input, out_name):
         raise NotImplementedError
 
     def create_model(self):
@@ -32,26 +33,30 @@ class SegModel(ABC):
             return model
 
 
-class SegModel2D(SegModel, ABC):
-    """ Class implementing generic and common 2D segmentation model methods. """
-    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size, conv2d_transpose_kernel_size):
-        assert len(input_size) == 2, f"The input size for 2D models must have 2 dimensions, but got {input_size}"
-        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size)
-        self.conv2d_transpose_kernel_size = conv2d_transpose_kernel_size
+class VNet(SegModel):
+    """ Implementation of VNet as per the paper. """
+    def __init__(self):
+        super().__init__()
 
 
-class SegModel3D(SegModel, ABC):
-    """ Class implementing generic and common 3D segmentation model methods. """
-    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size, conv3d_transpose_kernel_size):
-        assert len(input_size) == 3, f"The input size for 3D models must have 3 dimensions, but got {input_size}"
-        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size)
-        self.conv3d_transpose_kernel_size = conv3d_transpose_kernel_size
+class VNetPlusPlus(SegModel):
+    """ Experiments on my own novel architecture. """
+    def __init__(self):
+        super().__init__()
 
 
-class UNet3D(SegModel3D):
+class UNetPP2D(SegModel):
+    def __init__(self, input_size, output_length, kernel_size, transpose_kernel_size):
+        super().__init__(input_size, output_length, kernel_size, transpose_kernel_size)
+
+    def create_model(self):
+        pass
+
+
+class UNet3D(SegModel):
     """ Implementation of UNet-3D as per the 2016 paper: https://arxiv.org/pdf/1606.06650.pdf """
-    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3, 3), conv3d_transpose_kernel_size=(2, 2, 2)):
-        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, conv3d_transpose_kernel_size)
+    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3, 3), transpose_kernel_size=(2, 2, 2)):
+        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, transpose_kernel_size)
 
     def down_conv_block(self, m, filters_a, filters_b):
         """3D down-convolution block."""
@@ -67,7 +72,7 @@ class UNet3D(SegModel3D):
         """ 3D up-convolution block. """
         m = layers.Conv3DTranspose(
             filters_a,
-            self.conv3d_transpose_kernel_size,
+            self.transpose_kernel_size,
             strides=(2, 2, 2),
             padding='same',
             activation='relu'
@@ -110,10 +115,10 @@ class UNet3D(SegModel3D):
         return out
 
 
-class UNet3DShallow(SegModel3D):
+class UNet3DShallow(SegModel):
     """ Implementation of shallow UNet-3D as per Fahmy et al's 2019 paper: https://pubs.rsna.org/doi/10.1148/radiol.2019190737 """
-    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3, 3), conv3d_transpose_kernel_size=(2, 2, 2)):
-        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, conv3d_transpose_kernel_size)
+    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3, 3), transpose_kernel_size=(2, 2, 2)):
+        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, transpose_kernel_size)
 
     def down_conv_block(self, m, filters_a, filters_b):
         """3D down-convolution block."""
@@ -129,7 +134,7 @@ class UNet3DShallow(SegModel3D):
         """ 3D up-convolution block. """
         m = layers.Conv3DTranspose(
             filters_a,
-            self.conv3d_transpose_kernel_size,
+            self.transpose_kernel_size,
             strides=(2, 2, 1),
             padding='same',
             activation='relu'
@@ -146,7 +151,7 @@ class UNet3DShallow(SegModel3D):
 
         return m
 
-    def define_architecture(self, model_input):
+    def define_architecture(self, model_input, final_activation='softmax', out_name='m'):
         """ Build the UNet-3D model. """
         # Downsampling / encoding portion
         conv0 = self.down_conv_block(model_input, 32, 64)
@@ -167,27 +172,15 @@ class UNet3DShallow(SegModel3D):
         uconv0 = self.up_conv_block(uconv1, conv0, 128, 64)
 
         out = layers.Conv3D(self.output_length, (1, 1, 1), padding='same', activation=None)(uconv0)
-        out = layers.Activation('softmax', name='m')(out)
+        out = layers.Activation(final_activation, name=out_name)(out)
 
         return out
 
 
-class VNet(SegModel3D):
-    """ Implementation of VNet as per the paper. """
-    def __init__(self):
-        super().__init__()
-
-
-class VNetPlusPlus(SegModel3D):
-    """ Experiments on my own novel architecture. """
-    def __init__(self):
-        super().__init__()
-
-
-class UNet2D(SegModel2D):
-    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3), conv2d_transpose_kernel_size=(2, 2), depth=3):
+class UNet2D(SegModel):
+    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3), transpose_kernel_size=(2, 2), depth=3):
         assert depth in [3, 4], f"Only depth 3 or 4 supported for UNet2D, but got {depth}"
-        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, conv2d_transpose_kernel_size)
+        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, transpose_kernel_size)
         self.depth = depth
 
     def down_conv_block(self, m, filters):
@@ -204,7 +197,7 @@ class UNet2D(SegModel2D):
         """ 2D up-convolution block. """
         m = layers.Conv2DTranspose(
             filters,
-            self.conv2d_transpose_kernel_size,
+            self.transpose_kernel_size,
             strides=(2, 2),
             padding='same',
             activation='relu'
@@ -218,7 +211,7 @@ class UNet2D(SegModel2D):
 
         return m
 
-    def define_architecture(self, model_input):
+    def define_architecture(self, model_input, final_activation='softmax', out_name='m'):
         """ Build the UNet2D model. """
         # Downsampling / encoding portion
         conv0 = self.down_conv_block(model_input, 64)
@@ -250,25 +243,17 @@ class UNet2D(SegModel2D):
         uconv0 = self.up_conv_block(uconv1, conv0, 64)
 
         out = layers.Conv2D(self.output_length, (1, 1), padding='same', activation=None)(uconv0)
-        out = layers.Activation('softmax', name='m')(out)
+        out = layers.Activation(final_activation, name=out_name)(out)
 
         return out
 
 
-class UNetPP2D(SegModel2D):
-    def __init__(self, input_size, output_length, kernel_size, conv2d_transpose_kernel_size):
-        super().__init__(input_size, output_length, kernel_size, conv2d_transpose_kernel_size)
+class CascadedUNet3DB(SegModel):
+    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3, 3), transpose_kernel_size=(2, 2, 2)):
+        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, transpose_kernel_size)
 
-    def create_model(self):
-        pass
-
-
-class CascadedUNet3D(SegModel3D):
-    def __init__(self, input_size, output_length, kernel_size=(3, 3, 3), conv3d_transpose_kernel_size=(2, 2, 2)):
-        super().__init__(input_size, output_length, kernel_size, conv3d_transpose_kernel_size)
-
-    def define_architecture(self, model_input):
-        unet_1 = UNet3D(self.input_size, 6, self.kernel_size, self.conv3d_transpose_kernel_size)
+    def define_architecture(self, model_input, out_name=None):
+        unet_1 = UNet3D(self.input_size, 6, self.kernel_size, self.transpose_kernel_size)
         unet_1_out = unet_1.define_architecture(model_input, out_name='general_out')
         unet_1_out_softmax = tf.math.argmax(unet_1_out, axis=-1, output_type=tf.dtypes.int32)
         unet_1_out_softmax = tf.expand_dims(unet_1_out_softmax, axis=-1)
@@ -278,21 +263,41 @@ class CascadedUNet3D(SegModel3D):
         mask_lv_lumen = tf.where(tf.math.equal(unet_1_out_softmax, 1), model_input, 0)
 
         # Build the cascaded models
-        unet_scar = UNet3D(self.input_size, 1, self.kernel_size, self.conv3d_transpose_kernel_size)
+        unet_scar = UNet3D(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
         unet_scar_out = unet_scar.define_architecture(mask_lv_myo, 'sigmoid', out_name='scar_out')
 
-        unet_pap = UNet3D(self.input_size, 1, self.kernel_size, self.conv3d_transpose_kernel_size)
+        unet_pap = UNet3D(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
         unet_pap_out = unet_pap.define_architecture(mask_lv_lumen, 'sigmoid', out_name='pap_out')
 
         return unet_1_out, unet_scar_out, unet_pap_out
 
-    def create_model(self):
-        model_input = layers.Input((*self.input_size, 1))
 
-        return models.Model(inputs=model_input, outputs=self.define_architecture(model_input))
+class CascadedUNet2DB(SegModel):
+    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3), transpose_kernel_size=(2, 2), depth=3):
+        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, transpose_kernel_size)
+        self.depth = depth
+
+    def define_architecture(self, model_input, out_name=None):
+        unet_1 = UNet2D(self.input_size, 6, self.kernel_size, self.transpose_kernel_size)
+        unet_1_out = unet_1.define_architecture(model_input, out_name='general_out')
+        unet_1_out_softmax = tf.math.argmax(unet_1_out, axis=-1, output_type=tf.dtypes.int32)
+        unet_1_out_softmax = tf.expand_dims(unet_1_out_softmax, axis=-1)
+
+        # Get masked myocardium and lumen based on the predictions which will be used by the cascaded models
+        mask_lv_myo = tf.where(tf.math.equal(unet_1_out_softmax, 2), model_input, 0)
+        mask_lv_lumen = tf.where(tf.math.equal(unet_1_out_softmax, 1), model_input, 0)
+
+        # Build the cascaded models
+        unet_scar = UNet2D(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
+        unet_scar_out = unet_scar.define_architecture(mask_lv_myo, 'sigmoid', out_name='scar_out')
+
+        unet_pap = UNet2D(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
+        unet_pap_out = unet_pap.define_architecture(mask_lv_lumen, 'sigmoid', out_name='pap_out')
+
+        return unet_1_out, unet_scar_out, unet_pap_out
 
 
 if __name__ == '__main__':
-    c = CascadedUNet3D([160, 160, 16], 8).create_model()
+    c = CascadedUNet3DB([160, 160, 16], 8).create_model()
     c.summary(line_length=160)
     plot_model(c, 'CascadedUNet3Dplot.png', show_shapes=True)

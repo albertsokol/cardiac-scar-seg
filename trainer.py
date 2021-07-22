@@ -8,9 +8,9 @@ from tqdm import tqdm
 
 from tensorflow.keras.utils import plot_model
 
-from augmenter import Augmenter3D, Augmenter2D
+from augmenter import Augmenter2D, Augmenter3D
 from callbacks import LearningRatePrinter
-from generators import Generator3D, Generator3DShallow, Generator2D, CascadedGenerator3D
+from generators import Generator2D, Generator3DShallow, Generator3D, CascadedGenerator2DB, CascadedGenerator3DB
 from losses import (
     SoftmaxLoss,
     WeightedSoftmaxLoss,
@@ -20,7 +20,7 @@ from losses import (
     WeightedSoftmaxDiceLossPlusQuality
 )
 from metrics import DiceMetric, ClassWiseDiceMetric
-from models import UNet3D, UNet2D, UNet3DShallow, CascadedUNet3D
+from models import UNet2D, UNet3DShallow, UNet3D, CascadedUNet2DB, CascadedUNet3DB
 from util import PColour
 
 
@@ -67,11 +67,17 @@ class Trainer:
             self.augmenter = Augmenter3D(**augmentation)
             assert plane in ["transverse", "sagittal",
                              "coronal"], "Plane must be one of: 'transverse', 'sagittal', 'coronal'"
-        elif model in ['CascadedUNet3D']:
-            self.dimensionality = '3DCascaded'
+        elif model in ['CascadedUNet3DB']:
+            self.dimensionality = '3DCascadedB'
             self.data_root = '3D'
             self.augmenter = Augmenter3D(**augmentation)
             plane = ""
+        elif model in ['CascadedUNet2DB']:
+            self.dimensionality = '2DCascadedB'
+            self.data_root = '2D'
+            self.augmenter = Augmenter2D(**augmentation)
+            assert plane in ["transverse", "sagittal",
+                             "coronal"], "Plane must be one of: 'transverse', 'sagittal', 'coronal'"
         else:
             self.dimensionality = '2D'
             self.data_root = '2D'
@@ -88,13 +94,15 @@ class Trainer:
             "UNet3D": UNet3D,
             "UNet3DShallow": UNet3DShallow,
             "UNet2D": UNet2D,
-            "CascadedUNet3D": CascadedUNet3D,
+            "CascadedUNet3DB": CascadedUNet3DB,
+            "CascadedUNet2DB": CascadedUNet2DB,
         }
         self.gen_dict = {
             "3D": Generator3D,
             "3DShallow": Generator3DShallow,
             "2D": Generator2D,
-            "3DCascaded": CascadedGenerator3D,
+            "2DCascadedB": CascadedGenerator2DB,
+            "3DCascadedB": CascadedGenerator3DB,
         }
 
         assert not (warmup and lr_decay), "currently warmup and lr_decay cannot be used simultaneously"
@@ -116,7 +124,7 @@ class Trainer:
         self.callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
                 self.model_save_path,
-                monitor=monitor if model not in ['CascadedUNet3D'] else 'val_general_out_dice',
+                monitor=monitor if model not in ['CascadedUNet3DB', 'CascadedUNet2DB'] else 'val_general_out_dice',
                 save_best_only=True,
                 verbose=1,
                 mode='max',
@@ -246,7 +254,7 @@ class Trainer:
     def plot(self, history):
         # Plot the losses and dice coefficients for the model
         prefix = 'm_' if self.quality_weighted_mode else ''
-        e2e_cascading = True if self.model in ['CascadedUNet3D'] else False
+        e2e_cascading = True if self.model in ['CascadedUNet3DB', 'CascadedUNet2DB'] else False
         colors = ['coral', 'dodgerblue', 'teal', 'darkorchid', 'crimson', 'limegreen', 'hotpink', 'mediumblue',
                   'darkorange', 'navy', 'darkslategrey', 'purple', 'maroon', 'green', 'deeppink', 'navy']
 
@@ -320,7 +328,7 @@ class Trainer:
 
         optimizer = tf.keras.optimizers.Adam(learning_rate=schedule)
 
-        if self.model not in ['CascadedUNet3D']:
+        if self.model not in ['CascadedUNet3DB', 'CascadedUNet2DB']:
             if self.combine_labels:
                 metrics = [DiceMetric(self.batch_size)] + \
                           [ClassWiseDiceMetric(self.batch_size, i, str(i)) for i in

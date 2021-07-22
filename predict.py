@@ -17,8 +17,10 @@ def load_predictor(predict_config, train_config):
         p = Predictor3D(**predict_config, train_config=train_config)
     elif train_config['model'] in ['UNet3DShallow']:
         p = Predictor3DShallow(**predict_config, train_config=train_config)
-    elif train_config['model'] in ['CascadedUNet3D']:
-        p = Predictor3DCascaded(**predict_config, train_config=train_config)
+    elif train_config['model'] in ['CascadedUNet2DB']:
+        p = Predictor2DCascadedB(**predict_config, train_config=train_config)
+    elif train_config['model'] in ['CascadedUNet3DB']:
+        p = Predictor3DCascadedB(**predict_config, train_config=train_config)
     else:
         p = Predictor2D(**predict_config, train_config=train_config)
 
@@ -452,7 +454,7 @@ class Predictor3DShallow(__Predictor):
         return image, label, pred_label
 
 
-class Predictor3DCascaded(Predictor3D):
+class Predictor3DCascadedB(Predictor3D):
     def __init__(self, data_path, dataset, model_path, train_config):
         super().__init__(data_path, dataset, model_path, train_config)
 
@@ -478,11 +480,41 @@ class Predictor3DCascaded(Predictor3D):
 
         return image, label, pred_label
 
-    def display(self, image, label, pred_label, plane='transverse'):
-        """
-        Should show the label vs. prediction, label vs. image and prediction vs. image in a single scrollable view.
-        """
-        self.reader.scroll_view(np.concatenate((label, pred_label)), plane=plane)
+
+class Predictor2DCascadedB(Predictor2D):
+    def __init__(self, data_path, dataset, model_path, train_config):
+        super().__init__(data_path, dataset, model_path, train_config)
+
+    def predict(self, fname=None, display=False):
+        images, labels = self.load_image_label(fname)
+        pred_label = np.empty(images.shape[:-1], dtype=np.int8)
+
+        for i in range(images.shape[0]):
+            if self.quality_weighted_mode:
+                # Get the prediction on the current image with dummy quality weighting - pred is index 1
+                predictions = self.model.predict((images[i, np.newaxis, ...], np.array([1.], dtype=np.float32)))[1:]
+            else:
+                predictions = self.model.predict(images[i, np.newaxis, ...])
+
+            # Convert to the correct dimensionality and shift along to take all 8 values
+            general = np.squeeze(np.argmax(predictions[0], axis=-1))
+            general = np.where(np.greater_equal(general, 3), general + 1, general)
+            curr_gen = np.where(np.equal(general, 6), 7, general)
+            pred_label[i, ...] = curr_gen
+            # Add in scar and papillary muscle predictions
+            pred_label[i, ...] = np.where(np.greater_equal(np.squeeze(predictions[1]), 0.5), 3, pred_label[i, ...])
+            pred_label[i, ...] = np.where(np.greater_equal(np.squeeze(predictions[2]), 0.5), 6, pred_label[i, ...])
+
+        # Shift axes
+        image = np.moveaxis(np.squeeze(images), [0, 1, 2], [2, 0, 1])
+        label = np.moveaxis(labels, [0, 1, 2], [2, 0, 1])
+        pred_label = np.moveaxis(pred_label, [0, 1, 2], [2, 0, 1])
+
+        if display:
+            print(self.calculate_dice(label, pred_label))
+            self.display(image, label, pred_label)
+
+        return image, label, pred_label
 
 
 if __name__ == '__main__':

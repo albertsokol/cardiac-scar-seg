@@ -1,5 +1,6 @@
 import json
 import os
+from abc import ABC
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -11,7 +12,7 @@ from cropper import Cropper
 from masker import Masker
 
 
-class __Generator(Sequence):
+class __Generator(Sequence, ABC):
     def __init__(
         self,
         model_save_path,
@@ -357,54 +358,40 @@ class Generator3DShallow(Generator2D):
         return np.array(qw, dtype=np.float32)
 
 
-class __CascadedGenerator(Sequence):
+class __CascadedGeneratorB(__Generator, ABC):
     def __init__(
         self,
+        model_save_path,
         generic_data_path,
         data_path,
+        plane,
         batch_size,
         image_size,
         labels,
         dataset,
         shuffle,
         augmenter,
-        use_cropper=False,
-        combine_labels=None,
+        use_cropper,
+        combine_labels,
+        cascade,
+        quality_weighting_scores,
     ):
-        # Set up image filenames and indexing
-        self.augmenter = augmenter
-        self.data_path = data_path
-        self.image_fnames = [os.path.join(data_path, x, f'{x}_SAX.nii.gz') for x in sorted(os.listdir(data_path))]
-        self.label_fnames = [os.path.join(data_path, x, f'{x}_SAX_mask2.nii.gz') for x in sorted(os.listdir(data_path))]
-        assert len(self.image_fnames) == len(self.label_fnames), "Number of image files and label files did not match!"
-        self.index = np.arange(len(self.image_fnames))
-
-        # Model parameters
-        self.batch_size = batch_size
-        self.image_size = image_size
-        self.labels = labels
-
-        # Shuffle the data before starting if shuffling has been turned on
-        self.shuffle = shuffle
-        self.on_epoch_end()
-
-    def on_epoch_end(self):
-        # Optionally shuffle the data at the end of each epoch
-        if self.shuffle:
-            np.random.shuffle(self.index)
-
-    def __len__(self):
-        # Number of gradient descent steps that will be taken per epoch
-        return len(self.image_fnames) // self.batch_size
-
-    def __getitem__(self, index, weight_mode=False):
-        # Create a list of batch_size numerical indices
-        indices = self.index[self.batch_size * index:self.batch_size * (index + 1)]
-        if indices.size == 0:
-            raise IndexError('Index not within possible range (0 to number of training steps)')
-        # Generate the data
-        x, y_general, y_scar, y_pap = self.get_data(indices, weight_mode)
-        return x, {'general_out': y_general, 'scar_out': y_scar, 'pap_out': y_pap}
+        super().__init__(
+            model_save_path,
+            generic_data_path,
+            data_path,
+            plane,
+            batch_size,
+            image_size,
+            labels,
+            dataset,
+            shuffle,
+            augmenter,
+            use_cropper,
+            combine_labels,
+            cascade,
+            quality_weighting_scores,
+        )
 
     def get_data(self, batch_indices, weight_mode):
         # Initialise empty arrays for the training data and labels
@@ -413,37 +400,37 @@ class __CascadedGenerator(Sequence):
         y_scar = np.empty([self.batch_size, *self.image_size, 1], dtype=np.int8)
         y_pap = np.empty([self.batch_size, *self.image_size, 1], dtype=np.int8)
 
+        if len(self.image_size) == 2:
+            quality_weightings = np.zeros([self.batch_size], dtype=np.float32)
+        else:
+            quality_weightings = np.zeros([self.batch_size, self.image_size[-1]], dtype=np.float32)
+
         # Get the training data
         for i, index in enumerate(batch_indices):
-            img = self.read_file(index, self.image_fnames)
-            label = self.read_file(index, self.label_fnames)
+            img, fname = self.read_file(index, self.image_fnames)
+            label, fname = self.read_file(index, self.label_fnames)
             img = self.reader.normalize(img)
 
             # Apply data augmentation if option is turned on
             if self.augmenter and not weight_mode:
                 img, label = self.augmenter.augment(img, label)
 
-            x[i, ...] = self.prepare_img(img)
-            y_general[i, ...], y_scar[i, ...], y_pap[i, ...] = self.prepare_label(label)
+            x[i, ...] = self.prepare_img(img, fname)
+            y_general[i, ...], y_scar[i, ...], y_pap[i, ...] = self.prepare_label(label, fname)
+            if self.quality_weighting_scores:
+                quality_weightings[i, ...] = self.get_quality_weightings(fname)
 
-        return x, y_general, y_scar, y_pap
+        if self.quality_weighting_scores:
+            return {'model_in': x, 'qw_in': quality_weightings}, {'general_out': y_general, 'scar_out': y_scar, 'pap_out': y_pap, 'qw_out': quality_weightings}
+        else:
+            return x, {'general_out': y_general, 'scar_out': y_scar, 'pap_out': y_pap}
 
-    def read_file(self, index, fname_list):
-        """ Read the file at the given index of the given list. """
-        return self.reader.read(fname_list[index])
-
-    def prepare_img(self, img):
-        """ Set the image to the correct size and dimensions for placement into the input tensor. """
-        # Resize to the input shape of the model
-        if img.shape != self.image_size:
-            img = self.reader.resize(img, self.image_size)
-
-        img = img[..., np.newaxis]
-
-        return self.reader.normalize(img)
-
-    def prepare_label(self, label):
+    def prepare_label(self, label, fname):
         """ Set the label to the correct size and dimensions for placement into the ground truth tensor. """
+        # If cropping, then crop the label here
+        if self.use_cropper:
+            label = self.cropper.crop(label, fname)
+
         # Resize to the input shape of the model without interpolation
         if label.shape != self.image_size:
             label = self.reader.resize(label, self.image_size, interpolation_order=0)
@@ -466,54 +453,133 @@ class __CascadedGenerator(Sequence):
         return l_general, l_scar[..., np.newaxis], l_pap[..., np.newaxis]
 
 
-class CascadedGenerator3D(__CascadedGenerator):
+class CascadedGenerator2DB(__CascadedGeneratorB):
     def __init__(
         self,
+        model_save_path,
         generic_data_path,
         data_path,
+        plane,
         batch_size,
         image_size,
         labels,
+        dataset,
         shuffle=True,
         augmenter=None,
         use_cropper=False,
         combine_labels=None,
+        cascade=None,
+        quality_weighting_scores=None,
     ):
         super().__init__(
+            model_save_path,
             generic_data_path,
             data_path,
+            plane,
             batch_size,
             image_size,
             labels,
+            dataset,
             shuffle,
             augmenter,
             use_cropper,
             combine_labels,
+            cascade,
+            quality_weighting_scores,
         )
-        self.reader = NIIReader()
+        self.label_fnames = [
+            [os.path.join(data_path, x, f'{x}_{i:03}_label.npy')
+             for i in range(len(sorted(os.listdir(os.path.join(data_path, x)))) // 2)]
+            for x in sorted(os.listdir(data_path))
+        ]
+        self.label_fnames = [x for y in self.label_fnames for x in y]
+
+        if cascade:
+            self.image_fnames = [
+                [os.path.join(model_save_path, 'mask', dataset, x, f'{x}_{i:03}_image.npy')
+                 for i in range(len(sorted(os.listdir(os.path.join(model_save_path, 'mask', dataset, x)))))]
+                for x in sorted(os.listdir(os.path.join(model_save_path, 'mask', dataset)))
+            ]
+            self.image_fnames = [x for y in self.image_fnames for x in y]
+        else:
+            self.image_fnames = [
+                [os.path.join(data_path, x, f'{x}_{i:03}_image.npy')
+                 for i in range(len(sorted(os.listdir(os.path.join(data_path, x)))) // 2)]
+                for x in sorted(os.listdir(data_path))
+            ]
+            self.image_fnames = [x for y in self.image_fnames for x in y]
+
+        assert len(self.image_fnames) == len(self.label_fnames), \
+            f"Number of image files and label files did not match! {len(self.image_fnames)} images vs. {len(self.label_fnames)} labels ... "
+        self.index = np.arange(len(self.image_fnames))
+
+        self.reader = NPYReader()
+
+    def get_quality_weightings(self, fname):
+        """Get the quality weights for the current image slice."""
+        curr_label = fname.split('/')[-1]
+        curr_root = curr_label.split('_')[1]
+        curr_slice = int(curr_label.split('_')[2])
+
+        return self.quality_weighting_scores[str(self.quality_weightings_dict[curr_root][curr_slice])]
 
 
-class CascadedGenerator2D(__CascadedGenerator):
+class CascadedGenerator3DB(__CascadedGeneratorB):
     def __init__(
-            self,
-            generic_data_path,
-            data_path,
-            batch_size,
-            image_size,
-            labels,
-            shuffle=True,
-            augmenter=None,
-            use_cropper=False,
-            combine_labels=None,
+        self,
+        model_save_path,
+        generic_data_path,
+        data_path,
+        plane,
+        batch_size,
+        image_size,
+        labels,
+        dataset,
+        shuffle=True,
+        augmenter=None,
+        use_cropper=False,
+        combine_labels=None,
+        cascade=None,
+        quality_weighting_scores=None,
     ):
         super().__init__(
+            model_save_path,
             generic_data_path,
             data_path,
+            plane,
             batch_size,
             image_size,
             labels,
+            dataset,
             shuffle,
             augmenter,
             use_cropper,
-            combine_labels
+            combine_labels,
+            cascade,
+            quality_weighting_scores,
         )
+        # TODO: if cascade -> need to use fnames from the mask folder instead - test this
+        if cascade:
+            self.reader = NPYReader()
+            self.image_fnames = [
+                os.path.join(model_save_path, 'mask', dataset, f'{x}_SAX.nii.gz')
+                for x in sorted(os.listdir(os.path.join(model_save_path, 'mask', dataset)))
+            ]
+        else:
+            self.reader = NIIReader()
+        if self.quality_weighting_scores:
+            self.resizer = NPYReader()
+
+    def get_quality_weightings(self, fname):
+        """Get the quality weights for the current image - full or sliced."""
+        curr_label = fname.split('/')[-1]
+        curr_root = curr_label.split('_')[1]
+
+        # Get the quality weighting scores
+        qw = np.array([self.quality_weighting_scores[str(x)] for x in self.quality_weightings_dict[curr_root]], dtype=np.float32)
+
+        # If the shape is not the same as the model depth, need to resize without interpolating
+        if qw.shape[0] != self.image_size[-1]:
+            qw = self.resizer.resize(qw, [self.image_size[-1]], interpolation_order=0)
+
+        return qw

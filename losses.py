@@ -179,7 +179,7 @@ class CascadedWeightedSoftmaxDiceLoss(__Loss):
                 curr_weights = self.label_weights["scar"]
             else:
                 curr_weights = self.label_weights["pap"]
-            softmax_loss = curr_weights * tf.keras.metrics.binary_crossentropy(y_true, y_pred)
+            softmax_loss = 4. * curr_weights * tf.keras.metrics.binary_crossentropy(y_true, y_pred)
 
         softmax_loss = softmax_loss / self.num_vox / self.batch_size
 

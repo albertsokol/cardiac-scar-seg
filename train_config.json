@@ -1,16 +1,16 @@
 {
-  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/plotxp",
+  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/2D_exp",
   "data_path": "/media/y4tsu/ml_data/cmr/",
   "model": "UNet2D",
   "plane": "transverse",
-  "num_epochs": 3,
+  "num_epochs": 100,
   "batch_size": 16,
   "image_size": [144, 144],
   "use_cropper": "manual",
   "learning_rate": 5e-2,
   "lr_decay": 0.35,
   "warmup": false,
-  "loss_fn": "quality weighted softmax dice",
+  "loss_fn": "weighted softmax dice",
   "quality_weighting": {
     "0": 0.2,
     "1": 0.8,
@@ -26,10 +26,7 @@
     "6": "pap",
     "7": "aorta"
   },
-  "combine_labels": [
-    ["bg", "lv lumen", "lv myo", "scar"],
-    ["rv lumen", "rv myo", "pap", "aorta"]
-  ],
+  "combine_labels": [],
   "cascade": {},
   "augmentation": {
     "zoom": [0.96, 1.04],
