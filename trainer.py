@@ -10,8 +10,15 @@ from tensorflow.keras.utils import plot_model
 
 from augmenter import Augmenter3D, Augmenter2D
 from callbacks import LearningRatePrinter
-from generators import Generator3D, Generator2D, CascadedGenerator3D
-from losses import SoftmaxLoss, WeightedSoftmaxLoss, DiceLoss, WeightedSoftmaxDiceLoss, CascadedWeightedSoftmaxDiceLoss
+from generators import Generator3D, Generator3DShallow, Generator2D, CascadedGenerator3D
+from losses import (
+    SoftmaxLoss,
+    WeightedSoftmaxLoss,
+    DiceLoss,
+    WeightedSoftmaxDiceLoss,
+    CascadedWeightedSoftmaxDiceLoss,
+    WeightedSoftmaxDiceLossPlusQuality
+)
 from metrics import DiceMetric, ClassWiseDiceMetric
 from models import UNet3D, UNet2D, UNet3DShallow, CascadedUNet3D
 from util import PColour
@@ -37,6 +44,7 @@ class Trainer:
         combine_labels,
         cascade,
         loss_fn,
+        quality_weighting,
         augmentation,
     ):
         """
@@ -84,7 +92,7 @@ class Trainer:
         }
         self.gen_dict = {
             "3D": Generator3D,
-            "3DShallow": Generator2D,
+            "3DShallow": Generator3DShallow,
             "2D": Generator2D,
             "3DCascaded": CascadedGenerator3D,
         }
@@ -93,6 +101,7 @@ class Trainer:
 
         # Training parameters
         self.model = model
+        self.quality_weighted_mode = True if 'quality' in loss_fn else False
         self.num_epochs = num_epochs
         self.batch_size = batch_size
         self.image_size = image_size
@@ -100,10 +109,14 @@ class Trainer:
         self.lr_decay = lr_decay
         self.warmup = warmup
         self.combine_labels = combine_labels
+        if self.quality_weighted_mode:
+            monitor = 'val_m_dice'
+        else:
+            monitor = 'val_dice'
         self.callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
                 self.model_save_path,
-                monitor='val_dice' if model not in ['CascadedUNet3D'] else 'val_general_out_dice',
+                monitor=monitor if model not in ['CascadedUNet3D'] else 'val_general_out_dice',
                 save_best_only=True,
                 verbose=1,
                 mode='max',
@@ -115,6 +128,7 @@ class Trainer:
             'weighted softmax': WeightedSoftmaxLoss,
             'dice': DiceLoss,
             'weighted softmax dice': WeightedSoftmaxDiceLoss,
+            'quality weighted softmax dice': None,
             'cascaded weighted softmax dice': CascadedWeightedSoftmaxDiceLoss,
         }
         assert loss_fn in loss_dict, f'loss function {loss_fn}, not recognised, please pick one of: {loss_dict}'
@@ -133,6 +147,7 @@ class Trainer:
             use_cropper=use_cropper,
             combine_labels=combine_labels,
             cascade=cascade,
+            quality_weighting_scores=quality_weighting if self.quality_weighted_mode else False,
         )
         self.val_gen = self.gen_dict[self.dimensionality](
             model_save_path,
@@ -147,12 +162,21 @@ class Trainer:
             use_cropper=use_cropper,
             combine_labels=combine_labels,
             cascade=cascade,
+            quality_weighting_scores=quality_weighting if self.quality_weighted_mode else False,
         )
 
         # Labels
         self.labels = labels
+        self.quality_weighting = quality_weighting if quality_weighting else False
         if loss_fn in ['weighted softmax', 'weighted softmax dice']:
             self.loss_fn = loss_dict[loss_fn](batch_size, image_size, self.calculate_label_weights())
+        elif loss_fn in ['quality weighted softmax dice']:
+            self.loss_fn = WeightedSoftmaxDiceLossPlusQuality(
+                batch_size,
+                image_size,
+                self.calculate_label_weights(),
+                dimensionality=self.dimensionality,
+            )
         elif loss_fn in ['cascaded weighted softmax dice']:
             self.loss_fn = loss_dict[loss_fn](batch_size, image_size, self.calculate_label_weights_cascaded())
         else:
@@ -175,7 +199,10 @@ class Trainer:
         for i in tqdm(range(len(self.train_gen.image_fnames) // self.batch_size)):
             _, label_img = self.train_gen.__getitem__(i, weight_mode=True)
             # Get the number of labelled voxels of each class for each label image
-            sums += [label_img[..., j].sum() for j in range(label_img.shape[-1])]
+            if self.quality_weighted_mode:
+                sums += [label_img['m'][..., j].sum() for j in range(label_img['m'].shape[-1])]
+            else:
+                sums += [label_img[..., j].sum() for j in range(label_img.shape[-1])]
         # Get the total number of voxels in the dataset to normalize the beta
         total_voxels = np.prod(np.array([*self.image_size, len(self.train_gen.image_fnames)]))
         beta = sums / total_voxels
@@ -323,9 +350,10 @@ class Trainer:
         model = self.model_dict[self.model](
             input_size=self.image_size,
             output_length=len(self.combine_labels) if self.combine_labels else len(self.labels),
+            quality_weighted_mode=self.quality_weighted_mode,
         ).create_model()
 
-        plot_model(model, f'{self.model}_plot.png', show_shapes=True)
+        plot_model(model, f'plot/{self.model}_plot.png', show_shapes=True)
         model.summary(line_length=160)
 
         # TODO: assertions on all config stuff to prevent naughty values being given
@@ -359,6 +387,8 @@ class Trainer:
                 metrics = [DiceMetric(self.batch_size)] + \
                           [ClassWiseDiceMetric(self.batch_size, i, self.labels[label]) for i, label in
                            zip(range(len(self.labels)), self.labels)]
+            if self.quality_weighted_mode:
+                metrics = {'m': metrics}
         else:
             metrics = {
                 'general_out':
@@ -392,9 +422,11 @@ class Trainer:
         with open(f'{self.model_save_path}/train_config.json', 'w') as f:
             f.write(json.dumps(config, indent=4))
         print(f'Saved training config to {self.model_save_path}/train_config.json')
+        print(history.history)
+        print(f'history: {[history.history[x] for x in history.history]}')
 
         # Plot the losses
-        self.plot(history)
+        # self.plot(history)
 
 
 if __name__ == '__main__':

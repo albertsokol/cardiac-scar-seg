@@ -5,9 +5,11 @@ import os
 import nibabel as nib
 import numpy as np
 from matplotlib import pyplot as plt
+from matplotlib import rcParams
 from scipy.ndimage import rotate
+from tqdm import tqdm
 
-from readers import NIIReader
+from readers import NIIReader, NPYReader
 
 
 class PColour:
@@ -21,6 +23,99 @@ class PColour:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
+
+
+def analyse_quality_labels_frequency():
+    """Show the frequency of each of the quality labels and save as a plot."""
+    with open('quality_scores.json', 'r') as f:
+        qs = json.load(f)
+    totals = [0, 0, 0]
+
+    for k in qs:
+        curr = qs[k]
+        for x in curr:
+            totals[int(x)] += 1
+
+    print(totals)
+
+    rcParams['font.family'] = 'Ubuntu'
+
+    axs = plt.axes()
+    axs.bar([0, 1, 2], totals, color=["sandybrown", "lightcoral", "cadetblue"])
+    plt.xlabel("Slice quality score")
+    plt.ylabel("Frequency")
+    plt.xticks([0, 1, 2])
+    plt.title("Frequency of slice quality scores")
+    plt.savefig('plot/slice_quality_frequency.pdf', bbox_inches='tight')
+    plt.savefig('plot/slice_quality_frequency.png', dpi=300, bbox_inches='tight')
+
+
+def analyse_quality_labels_class_wise():
+    """Show the frequency of each class for each quality label and save as plots."""
+    with open('quality_scores.json', 'r') as f:
+        qs = json.load(f)
+
+    totals = {
+        0: [0] * 8,
+        1: [0] * 8,
+        2: [0] * 8,
+    }
+
+    total_px = {
+        0: 0,
+        1: 0,
+        2: 0,
+    }
+
+    reader = NPYReader()
+    base_folder = '/media/y4tsu/ml_data/cmr/2D/'
+
+    for dataset in ['train', 'val', 'test']:
+        roots = os.listdir(os.path.join(base_folder, dataset, 'transverse'))
+        for root in tqdm(roots):
+            labels = [x for x in sorted(os.listdir(os.path.join(base_folder, dataset, 'transverse', root))) if 'label' in x]
+            for i, x in enumerate(labels):
+                label = reader.read(os.path.join(base_folder, dataset, 'transverse', root, x))
+                q_key = root.split('_')[1]
+                q = qs[q_key][i]
+                total_px[q] += label.shape[0] * label.shape[1]
+                for j in range(8):
+                    totals[q][j] += np.where(np.equal(label, j), 1, 0).sum()
+
+    labels = ["lv lumen", "lv myo", "scar", "rv lumen", "rv myo", "pap", "aorta"]
+    for k in total_px:
+        total_px[k] -= totals[k][0]
+        totals[k].pop(0)
+        totals[k] = [100. * x / total_px[k] for x in totals[k]]
+
+    # Below portion adapted from https://www.python-graph-gallery.com/11-grouped-barplot
+    # set width of bars
+    rcParams['font.family'] = 'Ubuntu'
+    bar_width = 0.25
+
+    # set heights of bars
+    q0, q1, q2 = totals[0], totals[1], totals[2]
+
+    # Set position of bar on X axis
+    r1 = np.arange(len(q0))
+    r2 = [x + bar_width for x in r1]
+    r3 = [x + bar_width for x in r2]
+
+    # Make the plot
+    plt.bar(r1, q0, color='sandybrown', width=bar_width, edgecolor='white', label='0')
+    plt.bar(r2, q1, color='lightcoral', width=bar_width, edgecolor='white', label='1')
+    plt.bar(r3, q2, color='cadetblue', width=bar_width, edgecolor='white', label='2')
+
+    # Add xticks on the middle of the group bars
+    plt.xlabel('Label')
+    plt.ylabel('Proportion of label out of all pixels (%)')
+    plt.xticks([r + bar_width for r in range(len(q0))], labels)
+    plt.title('Proportion of label representation per quality score')
+
+    # Create legend & Show graphic
+    plt.legend(title='Quality score')
+    plt.savefig('plot/slice_quality_class_wise.pdf', bbox_inches='tight')
+    plt.savefig('plot/slice_quality_class_wise.png', dpi=300, bbox_inches='tight')
 
 
 def rotate_incorrect_orientations():
@@ -80,4 +175,4 @@ def rotate_incorrect_orientations():
 
 
 if __name__ == '__main__':
-    pass
+    analyse_quality_labels_class_wise()

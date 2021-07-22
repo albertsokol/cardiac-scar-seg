@@ -1,3 +1,4 @@
+import json
 import os
 
 import numpy as np
@@ -26,6 +27,7 @@ class __Generator(Sequence):
         use_cropper,
         combine_labels,
         cascade,
+        quality_weighting_scores,
     ):
         # Set up image filenames and indexing
         self.generic_data_path = generic_data_path  # root of all data folders
@@ -35,6 +37,12 @@ class __Generator(Sequence):
         self.label_fnames = [os.path.join(data_path, x, f'{x}_SAX_mask2.nii.gz') for x in sorted(os.listdir(data_path))]
         assert len(self.image_fnames) == len(self.label_fnames), "Number of image files and label files did not match!"
         self.index = np.arange(len(self.image_fnames))
+
+        # Get the quality weightings dictionary
+        if quality_weighting_scores:
+            with open('quality_scores.json', 'r') as f:
+                self.quality_weightings_dict = json.load(f)
+        self.quality_weighting_scores = quality_weighting_scores
 
         # Image handling: augmentation, cropping and masking
         self.augmenter = augmenter
@@ -89,6 +97,11 @@ class __Generator(Sequence):
         else:
             y = np.empty([self.batch_size, *self.image_size, len(self.labels)], dtype=np.int8)
 
+        if len(self.image_size) == 2:
+            quality_weightings = np.zeros([self.batch_size], dtype=np.float32)
+        else:
+            quality_weightings = np.zeros([self.batch_size, self.image_size[-1]], dtype=np.float32)
+
         # Get the training data
         for i, index in enumerate(batch_indices):
             img, fname = self.read_file(index, self.image_fnames)
@@ -101,8 +114,13 @@ class __Generator(Sequence):
 
             x[i, ...] = self.prepare_img(img, fname)
             y[i, ...] = self.prepare_label(label, fname)
+            if self.quality_weighting_scores:
+                quality_weightings[i, ...] = self.get_quality_weightings(fname)
 
-        return x, y
+        if self.quality_weighting_scores:
+            return {'model_in': x, 'qw_in': quality_weightings}, {'m': y, 'qw_out': quality_weightings}
+        else:
+            return x, y
 
     def read_file(self, index, fname_list):
         """ Read the file at the given index of the given list. """
@@ -139,6 +157,10 @@ class __Generator(Sequence):
         # One hot encode the labels to create a new channel for each label and save as int8 to save space
         return one_hot(label, len(self.labels), dtype=np.int8).numpy()
 
+    def get_quality_weightings(self, fname):
+        """Get the quality weights for the current image slice."""
+        raise NotImplementedError
+
     def apply_label_combine(self, label):
         """Combine each list of labels in self.combine_labels into a single label."""
         out = np.zeros([*label.shape, len(self.combine_labels)], dtype=np.int8)
@@ -168,6 +190,7 @@ class Generator3D(__Generator):
         use_cropper=False,
         combine_labels=None,
         cascade=None,
+        quality_weighting_scores=None,
     ):
         super().__init__(
             model_save_path,
@@ -183,6 +206,7 @@ class Generator3D(__Generator):
             use_cropper,
             combine_labels,
             cascade,
+            quality_weighting_scores,
         )
         # TODO: if cascade -> need to use fnames from the mask folder instead - test this
         if cascade:
@@ -193,6 +217,22 @@ class Generator3D(__Generator):
             ]
         else:
             self.reader = NIIReader()
+        if self.quality_weighting_scores:
+            self.resizer = NPYReader()
+
+    def get_quality_weightings(self, fname):
+        """Get the quality weights for the current image - full or sliced."""
+        curr_label = fname.split('/')[-1]
+        curr_root = curr_label.split('_')[1]
+
+        # Get the quality weighting scores
+        qw = np.array([self.quality_weighting_scores[str(x)] for x in self.quality_weightings_dict[curr_root]], dtype=np.float32)
+
+        # If the shape is not the same as the model depth, need to resize without interpolating
+        if qw.shape[0] != self.image_size[-1]:
+            qw = self.resizer.resize(qw, [self.image_size[-1]], interpolation_order=0)
+
+        return qw
 
 
 class Generator2D(__Generator):
@@ -212,6 +252,7 @@ class Generator2D(__Generator):
         use_cropper=False,
         combine_labels=None,
         cascade=None,
+        quality_weighting_scores=None,
     ):
         super().__init__(
             model_save_path,
@@ -227,6 +268,7 @@ class Generator2D(__Generator):
             use_cropper,
             combine_labels,
             cascade,
+            quality_weighting_scores,
         )
         self.label_fnames = [
             [os.path.join(data_path, x, f'{x}_{i:03}_label.npy')
@@ -255,6 +297,64 @@ class Generator2D(__Generator):
         self.index = np.arange(len(self.image_fnames))
 
         self.reader = NPYReader()
+
+    def get_quality_weightings(self, fname):
+        """Get the quality weights for the current image slice."""
+        curr_label = fname.split('/')[-1]
+        curr_root = curr_label.split('_')[1]
+        curr_slice = int(curr_label.split('_')[2])
+
+        return self.quality_weighting_scores[str(self.quality_weightings_dict[curr_root][curr_slice])]
+
+
+class Generator3DShallow(Generator2D):
+    """Class for 3D shallow quality weighting scores."""
+    def __init__(
+        self,
+        model_save_path,
+        generic_data_path,
+        data_path,
+        plane,
+        batch_size,
+        image_size,
+        labels,
+        dataset,
+        shuffle=True,
+        augmenter=None,
+        use_cropper=False,
+        combine_labels=None,
+        cascade=None,
+        quality_weighting_scores=None,
+    ):
+        super().__init__(
+            model_save_path,
+            generic_data_path,
+            data_path,
+            plane,
+            batch_size,
+            image_size,
+            labels,
+            dataset,
+            shuffle,
+            augmenter,
+            use_cropper,
+            combine_labels,
+            cascade,
+            quality_weighting_scores,
+        )
+        self.slice_depth = image_size[-1]
+
+    def get_quality_weightings(self, fname):
+        """Get the quality weights for the current image slice."""
+        curr_label = fname.split('/')[-1]
+        curr_root = curr_label.split('_')[1]
+        curr_slice = int(curr_label.split('_')[2])
+
+        qw = []
+        for i in range(curr_slice, curr_slice + self.slice_depth):
+            qw += [self.quality_weighting_scores[str(self.quality_weightings_dict[curr_root][i])]]
+
+        return np.array(qw, dtype=np.float32)
 
 
 class __CascadedGenerator(Sequence):

@@ -11,6 +11,11 @@
   "lr_decay": 0.35,
   "warmup": false,
   "loss_fn": "weighted softmax dice",
+  "quality_weighting": {
+    "0": 0.5,
+    "1": 0.8,
+    "2": 1.0
+  },
   "labels": {
     "0": "bg",
     "1": "lv lumen",

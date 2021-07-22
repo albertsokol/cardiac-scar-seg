@@ -71,20 +71,6 @@ class DiceLoss(__Loss):
         return 1 - dice_coefficient
 
 
-class WeightedDiceLoss(__Loss):
-    """ Dice loss, but each class is taken separately and weighted to give the final loss values. """
-    def __init__(self, batch_size, image_size, label_weights):
-        super().__init__(batch_size, image_size)
-        self.label_weights = label_weights
-
-    def call(self, *args, **kwargs):
-        y_true, y_pred = args[0], args[1]
-
-        # Should reduce to 5-dim vector somehow - use axis or keepdims ?
-        numerator = 2 * K.sum(y_true * y_pred) + 1e-7
-        denominator = K.sum(y_true) + K.sum(y_pred) + 1e-7
-
-
 class WeightedSoftmaxDiceLoss(__Loss):
     """ A combination of weighted cross-entropy loss and Dice loss with adjustable weighting. """
     def __init__(self, batch_size, image_size, label_weights, dice_weight=0.5):
@@ -101,7 +87,6 @@ class WeightedSoftmaxDiceLoss(__Loss):
         super().__init__(batch_size, image_size)
         self.label_weights = label_weights
         self.dice_weight = dice_weight
-        # mask dict here?
 
     def call(self, *args, **kwargs):
         y_true, y_pred = args[0], args[1]
@@ -118,6 +103,62 @@ class WeightedSoftmaxDiceLoss(__Loss):
 
         # Finally, combine the two
         return self.dice_weight * dice_loss + softmax_loss
+
+
+class WeightedSoftmaxDiceLossPlusQuality(__Loss):
+    """
+    A combination of weighted cross-entropy loss and Dice loss with adjustable weighting and quality score weighting.
+    """
+    def __init__(self, batch_size, image_size, label_weights, dice_weight=0.5, dimensionality=None):
+        """
+        Initialiser for WeightedSoftmaxDiceLossPlusQuality.
+
+        Params
+        ======
+        :param batch_size: int: number of examples per training batch
+        :param image_size:
+        :param label_weights:
+        :param dice_weight: float: e.g., if 2., then Dice loss is doubled to weight it more strongly
+        """
+        super().__init__(batch_size, image_size)
+        self.label_weights = label_weights
+        self.dice_weight = dice_weight
+        self.curr_slice_qualities = None
+        self.full_3d_mode = True if dimensionality == '3D' else False
+        if '3D' in dimensionality:
+            self.qw_out_name = "IteratorGetNext:1"
+            self.sum_axes = [1, 2, 4]
+        else:
+            self.qw_out_name = "ExpandDims:0"
+            self.sum_axes = [1, 2, 3]
+
+    def call(self, *args, **kwargs):
+        y_true, y_pred = args[0], args[1]
+
+        # Update the quality for the current slice if the current call is for the 'qw_out' tensor
+        if self.qw_out_name in y_pred.name:
+            if self.full_3d_mode:
+                self.curr_slice_qualities = y_pred
+            else:
+                self.curr_slice_qualities = tf.squeeze(y_pred)
+            # Return a loss of 0 for this case
+            return 0
+
+        # First, get the softmax loss
+        softmax_loss = - K.sum(self.label_weights * y_true * K.log(self.clip(y_pred)), axis=self.sum_axes)
+        softmax_loss = softmax_loss / self.num_vox / self.batch_size
+
+        # Then, get the Dice loss
+        numerator = 2 * K.sum(y_true * y_pred, axis=self.sum_axes) + 1e-7
+        denominator = K.sum(y_true, axis=self.sum_axes) + K.sum(y_pred, axis=self.sum_axes) + 1e-7
+        dice_coefficient = numerator / denominator
+        dice_loss = 1 - dice_coefficient
+
+        # Combine the two and apply the image-wise quality weightings
+        ele_wise_loss = self.dice_weight * dice_loss + softmax_loss
+        ele_wise_loss *= self.curr_slice_qualities
+
+        return K.sum(ele_wise_loss)
 
 
 class CascadedWeightedSoftmaxDiceLoss(__Loss):

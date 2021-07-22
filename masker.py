@@ -124,5 +124,3 @@ class Masker:
                 self.save_3d_shallow_mask(masked_image, root, depth=train_config['image_size'][-1])
             else:
                 self.save_3d_mask(masked_image, root)
-
-        return

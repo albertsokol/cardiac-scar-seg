@@ -10,38 +10,51 @@ from tensorflow.keras import models
 
 class SegModel(ABC):
     """ Class implementing generic and common segmentation model methods. """
-    def __init__(self, input_size, output_length, kernel_size):
+    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size):
         self.input_size = input_size
         self.output_length = output_length
+        self.quality_weighted_mode = quality_weighted_mode
         self.kernel_size = kernel_size
 
-    def create_model(self):
+    def define_architecture(self, model_input):
         raise NotImplementedError
+
+    def create_model(self):
+        """ Create a Model object which can be used for training. """
+        # Input is the 2D image size plus a dimension representing the channels
+        model_input = layers.Input((*self.input_size, 1), name='model_in')
+        model = models.Model(inputs=model_input, outputs=self.define_architecture(model_input))
+
+        if self.quality_weighted_mode:
+            qw_in = layers.Input(1, name='qw_in')
+            return models.Model(inputs=[model.input, qw_in], outputs=[layers.Layer(name='qw_out')(qw_in), model.output])
+        else:
+            return model
 
 
 class SegModel2D(SegModel, ABC):
     """ Class implementing generic and common 2D segmentation model methods. """
-    def __init__(self, input_size, output_length, kernel_size, conv2d_transpose_kernel_size):
+    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size, conv2d_transpose_kernel_size):
         assert len(input_size) == 2, f"The input size for 2D models must have 2 dimensions, but got {input_size}"
-        super().__init__(input_size, output_length, kernel_size)
+        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size)
         self.conv2d_transpose_kernel_size = conv2d_transpose_kernel_size
 
 
 class SegModel3D(SegModel, ABC):
     """ Class implementing generic and common 3D segmentation model methods. """
-    def __init__(self, input_size, output_length, kernel_size, conv3d_transpose_kernel_size):
+    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size, conv3d_transpose_kernel_size):
         assert len(input_size) == 3, f"The input size for 3D models must have 3 dimensions, but got {input_size}"
-        super().__init__(input_size, output_length, kernel_size)
+        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size)
         self.conv3d_transpose_kernel_size = conv3d_transpose_kernel_size
 
 
 class UNet3D(SegModel3D):
     """ Implementation of UNet-3D as per the 2016 paper: https://arxiv.org/pdf/1606.06650.pdf """
-    def __init__(self, input_size, output_length, kernel_size=(3, 3, 3), conv3d_transpose_kernel_size=(2, 2, 2)):
-        super().__init__(input_size, output_length, kernel_size, conv3d_transpose_kernel_size)
+    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3, 3), conv3d_transpose_kernel_size=(2, 2, 2)):
+        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, conv3d_transpose_kernel_size)
 
     def down_conv_block(self, m, filters_a, filters_b):
-        """ 3D down-convolution block. """
+        """3D down-convolution block."""
         m = layers.Conv3D(filters_a, self.kernel_size, padding='same', activation='relu')(m)
         m = layers.BatchNormalization()(m)
 
@@ -71,7 +84,7 @@ class UNet3D(SegModel3D):
 
         return m
 
-    def define_architecture(self, model_input, final_activation='softmax', out_name=None):
+    def define_architecture(self, model_input, final_activation='softmax', out_name='m'):
         """ Build the UNet-3D model. """
         # Downsampling / encoding portion
         conv0 = self.down_conv_block(model_input, 32, 64)
@@ -92,28 +105,18 @@ class UNet3D(SegModel3D):
         uconv0 = self.up_conv_block(uconv1, conv0, 128, 64)
 
         out = layers.Conv3D(self.output_length, (1, 1, 1), padding='same', activation=None)(uconv0)
-        if out_name is not None:
-            out = layers.Activation(final_activation, name=out_name)(out)
-        else:
-            out = layers.Activation(final_activation)(out)
+        out = layers.Activation(final_activation, name=out_name)(out)
 
         return out
-
-    def create_model(self):
-        """ Create a Model object which can be used for training. """
-        # Input is the 3D volume size plus a dimension representing the channels
-        model_input = layers.Input((self.input_size[0], self.input_size[1], self.input_size[2], 1))
-
-        return models.Model(inputs=model_input, outputs=self.define_architecture(model_input))
 
 
 class UNet3DShallow(SegModel3D):
     """ Implementation of shallow UNet-3D as per Fahmy et al's 2019 paper: https://pubs.rsna.org/doi/10.1148/radiol.2019190737 """
-    def __init__(self, input_size, output_length, kernel_size=(3, 3, 3), conv3d_transpose_kernel_size=(2, 2, 2)):
-        super().__init__(input_size, output_length, kernel_size, conv3d_transpose_kernel_size)
+    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3, 3), conv3d_transpose_kernel_size=(2, 2, 2)):
+        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, conv3d_transpose_kernel_size)
 
     def down_conv_block(self, m, filters_a, filters_b):
-        """ 3D down-convolution block. """
+        """3D down-convolution block."""
         m = layers.Conv3D(filters_a, self.kernel_size, padding='same', activation='relu')(m)
         m = layers.BatchNormalization()(m)
 
@@ -164,16 +167,9 @@ class UNet3DShallow(SegModel3D):
         uconv0 = self.up_conv_block(uconv1, conv0, 128, 64)
 
         out = layers.Conv3D(self.output_length, (1, 1, 1), padding='same', activation=None)(uconv0)
-        out = layers.Activation('softmax')(out)
+        out = layers.Activation('softmax', name='m')(out)
 
         return out
-
-    def create_model(self):
-        """ Create a Model object which can be used for training. """
-        # Input is the 3D volume size plus a dimension representing the channels
-        model_input = layers.Input((self.input_size[0], self.input_size[1], self.input_size[2], 1))
-
-        return models.Model(inputs=model_input, outputs=self.define_architecture(model_input))
 
 
 class VNet(SegModel3D):
@@ -189,9 +185,9 @@ class VNetPlusPlus(SegModel3D):
 
 
 class UNet2D(SegModel2D):
-    def __init__(self, input_size, output_length, kernel_size=(3, 3), conv2d_transpose_kernel_size=(2, 2), depth=3):
+    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3), conv2d_transpose_kernel_size=(2, 2), depth=3):
         assert depth in [3, 4], f"Only depth 3 or 4 supported for UNet2D, but got {depth}"
-        super().__init__(input_size, output_length, kernel_size, conv2d_transpose_kernel_size)
+        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, conv2d_transpose_kernel_size)
         self.depth = depth
 
     def down_conv_block(self, m, filters):
@@ -254,16 +250,9 @@ class UNet2D(SegModel2D):
         uconv0 = self.up_conv_block(uconv1, conv0, 64)
 
         out = layers.Conv2D(self.output_length, (1, 1), padding='same', activation=None)(uconv0)
-        out = layers.Activation('softmax')(out)
+        out = layers.Activation('softmax', name='m')(out)
 
         return out
-
-    def create_model(self):
-        """ Create a Model object which can be used for training. """
-        # Input is the 2D image size plus a dimension representing the channels
-        model_input = layers.Input((self.input_size[0], self.input_size[1], 1))
-
-        return models.Model(inputs=model_input, outputs=self.define_architecture(model_input))
 
 
 class UNetPP2D(SegModel2D):

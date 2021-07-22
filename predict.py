@@ -37,6 +37,8 @@ class __Predictor:
         self.combine_labels = train_config['combine_labels']
         self.cascade = False if not train_config['cascade'] else train_config['cascade']
 
+        self.quality_weighted_mode = True if 'quality' in train_config['loss_fn'] else False
+
         self.dimensionality = None
         self.plane = ""
 
@@ -190,7 +192,7 @@ class Predictor3D(__Predictor):
 
     def load_image_label(self, fname):
         """ Loads the image and label files. """
-        image_folder, label_folder, suffix = self.__get_image_label_folder_paths(fname)
+        image_folder, label_folder, suffix = self._get_folder_paths(fname)
 
         # Load image and label
         image = self.reader.read(os.path.join(image_folder, f'{suffix}_SAX.nii.gz'))
@@ -216,7 +218,10 @@ class Predictor3D(__Predictor):
 
     def predict(self, fname=None, display=False):
         image, label = self.load_image_label(fname)
-        pred_label = self.model.predict(image)
+        if self.quality_weighted_mode:
+            pred_label = self.model.predict((image, np.array([1.], dtype=np.float32)))[1]
+        else:
+            pred_label = self.model.predict(image)
         pred_label = np.squeeze(np.argmax(pred_label, axis=-1))
 
         if display:
@@ -245,8 +250,8 @@ class Predictor2D(__Predictor):
 
     def load_image_label(self, fname):
         """ Loads the image and label files. """
-        image_folder, label_folder, suffix = self.__get_image_label_folder_paths(fname)
-        image_paths, label_paths = self.__get_image_label_paths(image_folder, label_folder, suffix)
+        image_folder, label_folder, suffix = self._get_folder_paths(fname)
+        image_paths, label_paths = self._get_image_label_paths(image_folder, label_folder, suffix)
 
         images = np.empty([len(image_paths), *self.image_size, 1], dtype=np.float32)
         labels = np.empty([len(label_paths), *self.image_size], dtype=np.int8)
@@ -280,7 +285,11 @@ class Predictor2D(__Predictor):
         pred_label = np.empty(images.shape[:-1], dtype=np.int8)
 
         for i in range(images.shape[0]):
-            curr_pred = self.model.predict(images[i, np.newaxis, ...])
+            if self.quality_weighted_mode:
+                # Get the prediction on the current image with dummy quality weighting - pred is index 1
+                curr_pred = self.model.predict((images[i, np.newaxis, ...], np.array([1.], dtype=np.float32)))[1]
+            else:
+                curr_pred = self.model.predict(images[i, np.newaxis, ...])
             pred_label[i, ...] = np.squeeze(np.argmax(curr_pred, axis=-1))
 
         image = np.moveaxis(np.squeeze(images), [0, 1, 2], [2, 0, 1])
@@ -306,9 +315,13 @@ class Predictor2D(__Predictor):
 
         # Create a new model which pulls out the logits before the softmax activation at the end
         pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=self.model.layers[-2].output)
+        raise AttributeError('Need to confirm this is pulling out the correct layer output')
 
         for i in range(images.shape[0]):
-            curr_pred = pred_model.predict(images[i, np.newaxis, ...])
+            if self.quality_weighted_mode:
+                curr_pred = self.model.predict((images[i, np.newaxis, ...], np.array([1.], dtype=np.float32)))[1]
+            else:
+                curr_pred = pred_model.predict(images[i, np.newaxis, ...])
             pred_logits[i, ...] = np.squeeze(curr_pred)
 
         image = np.moveaxis(np.squeeze(images), [0, 1, 2], [2, 0, 1])
@@ -428,10 +441,16 @@ class Predictor3DShallow(__Predictor):
         pred_logits = []
 
         # Create a new model which pulls out the logits before the softmax activation at the end
-        pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=self.model.layers[-2].output)
+        if self.quality_weighted_mode:
+            pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=self.model.layers[-1].output)
+        else:
+            pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=self.model.layers[-2].output)
 
         for image in images:
-            curr_pred = pred_model.predict(image[np.newaxis, ...])
+            if self.quality_weighted_mode:
+                curr_pred = pred_model.predict((image[np.newaxis, ...], np.array([1.], dtype=np.float32)))
+            else:
+                curr_pred = pred_model.predict(image[np.newaxis, ...])
             pred_logits += [np.squeeze(curr_pred)]
 
         # Re-generate the image and labels slice-wise
