@@ -173,6 +173,23 @@ class __Predictor:
 
         return image_paths, label_paths
 
+    def _prepare_image_label(self, image, label, suffix):
+        """Get image and label ready for down-stream predictions."""
+        if self.use_cropper:
+            if not self.cascade:
+                image = self.cropper.crop(image, suffix)
+            label = self.cropper.crop(label, suffix)
+
+        # Set to the correct dimensions
+        if image.shape != self.image_size:
+            image = self.reader.resize(image, self.image_size)
+        if label.shape != self.image_size:
+            label = self.reader.resize(label, self.image_size, interpolation_order=0)
+
+        image = self.reader.normalize(image)
+
+        return image, label
+
 
 class Predictor3D(__Predictor):
     def __init__(self, data_path, dataset, model_path, train_config):
@@ -198,18 +215,7 @@ class Predictor3D(__Predictor):
         image = self.reader.read(os.path.join(image_folder, f'{suffix}_SAX.nii.gz'))
         label = self.reader.read(os.path.join(label_folder, f'{suffix}_SAX_mask2.nii.gz'))
 
-        if self.use_cropper:
-            if not self.cascade:
-                image = self.cropper.crop(image, suffix)
-            label = self.cropper.crop(label, suffix)
-
-        # Set to the correct dimensions
-        if image.shape != self.image_size:
-            image = self.reader.resize(image, self.image_size)
-        if label.shape != self.image_size:
-            label = self.reader.resize(label, self.image_size, interpolation_order=0)
-
-        image = self.reader.normalize(image)
+        image, label = self._prepare_image_label(image, label, suffix)
 
         # Set to the correct rank
         image = image[np.newaxis, ..., np.newaxis]
@@ -260,18 +266,7 @@ class Predictor2D(__Predictor):
             image = self.reader.read(image_path)
             label = self.reader.read(label_path)
 
-            if self.use_cropper:
-                if not self.cascade:
-                    image = self.cropper.crop(image, suffix)
-                label = self.cropper.crop(label, suffix)
-
-            # Set to the correct dimensions
-            if image.shape != self.image_size:
-                image = self.reader.resize(image, self.image_size)
-            if label.shape != self.image_size:
-                label = self.reader.resize(label, self.image_size, interpolation_order=0)
-
-            image = self.reader.normalize(image)
+            image, label = self._prepare_image_label(image, label, suffix)
 
             # Set to the correct rank
             image = image[..., np.newaxis]
@@ -358,18 +353,7 @@ class Predictor3DShallow(__Predictor):
             image = self.reader.read(image_path)
             label = self.reader.read(label_path)
 
-            if self.use_cropper:
-                if not self.cascade:
-                    image = self.cropper.crop(image, suffix)
-                label = self.cropper.crop(label, suffix)
-
-            # Set to the correct dimensions
-            if image.shape != self.image_size:
-                image = self.reader.resize(image, self.image_size)
-            if label.shape != self.image_size:
-                label = self.reader.resize(label, self.image_size, interpolation_order=0)
-
-            image = self.reader.normalize(image)
+            image, label = self._prepare_image_label(image, label, suffix)
 
             # Set to the correct rank
             image = image[..., np.newaxis]

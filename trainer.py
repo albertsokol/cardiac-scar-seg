@@ -128,7 +128,7 @@ class Trainer:
             'weighted softmax': WeightedSoftmaxLoss,
             'dice': DiceLoss,
             'weighted softmax dice': WeightedSoftmaxDiceLoss,
-            'quality weighted softmax dice': None,
+            'quality weighted softmax dice': WeightedSoftmaxDiceLossPlusQuality,
             'cascaded weighted softmax dice': CascadedWeightedSoftmaxDiceLoss,
         }
         assert loss_fn in loss_dict, f'loss function {loss_fn}, not recognised, please pick one of: {loss_dict}'
@@ -171,7 +171,7 @@ class Trainer:
         if loss_fn in ['weighted softmax', 'weighted softmax dice']:
             self.loss_fn = loss_dict[loss_fn](batch_size, image_size, self.calculate_label_weights())
         elif loss_fn in ['quality weighted softmax dice']:
-            self.loss_fn = WeightedSoftmaxDiceLossPlusQuality(
+            self.loss_fn = loss_dict[loss_fn](
                 batch_size,
                 image_size,
                 self.calculate_label_weights(),
@@ -245,97 +245,41 @@ class Trainer:
 
     def plot(self, history):
         # Plot the losses and dice coefficients for the model
-        if self.model not in ['CascadedUNet3D']:
-            loss_history = history.history['loss']
-            val_loss_history = history.history['val_loss']
-            dice_coefficient_history = history.history['dice']
-            val_dice_coefficient_history = history.history['val_dice']
-        else:
-            loss_history = history.history['general_out_loss']
-            val_loss_history = history.history['val_general_out_loss']
-            dice_coefficient_history = history.history['general_out_dice']
-            val_dice_coefficient_history = history.history['val_general_out_dice']
-            scar_loss_history = history.history['scar_out_loss']
-            val_scar_loss_history = history.history['val_scar_out_loss']
-            scar_dice_history = history.history['scar_out_dice']
-            val_scar_dice_history = history.history['val_scar_out_dice']
-            pap_loss_history = history.history['pap_out_loss']
-            val_pap_loss_history = history.history['val_pap_out_loss']
-            pap_dice_history = history.history['pap_out_dice']
-            val_pap_dice_history = history.history['val_pap_out_dice']
+        prefix = 'm_' if self.quality_weighted_mode else ''
+        e2e_cascading = True if self.model in ['CascadedUNet3D'] else False
+        colors = ['coral', 'dodgerblue', 'teal', 'darkorchid', 'crimson', 'limegreen', 'hotpink', 'mediumblue',
+                  'darkorange', 'navy', 'darkslategrey', 'purple', 'maroon', 'green', 'deeppink', 'navy']
 
         fig, axs = plt.subplots(nrows=2, ncols=2)
         fig.set_size_inches(8, 12)
 
-        if self.model not in ['CascadedUNet3D']:
-            axs[0, 0].plot(range(1, 1 + len(loss_history)), loss_history, 'r-', label='train loss')
-            axs[0, 0].plot(range(1, 1 + len(val_loss_history)), val_loss_history, 'b-', label='val loss')
-        else:
-            axs[0, 0].plot(range(1, 1 + len(loss_history)), loss_history, 'r-', label='gen train loss')
-            axs[0, 0].plot(range(1, 1 + len(val_loss_history)), val_loss_history, 'b-', label='gen val loss')
-            axs[0, 0].plot(range(1, 1 + len(scar_loss_history)), scar_loss_history, 'c-', label='scar train loss')
-            axs[0, 0].plot(range(1, 1 + len(val_scar_loss_history)), val_scar_loss_history, 'g-', label='scar val loss')
-            axs[0, 0].plot(range(1, 1 + len(pap_loss_history)), pap_loss_history, 'm-', label='pap train loss')
-            axs[0, 0].plot(range(1, 1 + len(val_pap_loss_history)), val_pap_loss_history, 'y-', label='pap val loss')
-
+        t_loss_hx = history.history[f'{prefix}loss'] if not e2e_cascading else history.history[f'{prefix}general_out_loss']
+        v_loss_hx = history.history[f'val_{prefix}loss'] if not e2e_cascading else history.history[f'val_{prefix}general_out_loss']
+        axs[0, 0].plot(range(1, 1 + len(t_loss_hx)), t_loss_hx, 'r-', label='train loss')
+        axs[0, 0].plot(range(1, 1 + len(v_loss_hx)), v_loss_hx, 'b-', label='val loss')
         axs[0, 0].set(xlabel='epochs', ylabel='loss')
         axs[0, 0].legend(loc="upper right")
 
-        if self.model not in ['CascadedUNet3D']:
-            axs[0, 1].plot(range(1, 1 + len(dice_coefficient_history)), dice_coefficient_history, 'r-', label='train dice')
-            axs[0, 1].plot(range(1, 1 + len(val_dice_coefficient_history)), val_dice_coefficient_history, 'b-', label='val dice')
-        else:
-            axs[0, 1].plot(range(1, 1 + len(dice_coefficient_history)), dice_coefficient_history, 'r-', label='gen train dice')
-            axs[0, 1].plot(range(1, 1 + len(val_dice_coefficient_history)), val_dice_coefficient_history, 'b-', label='gen val dice')
-            axs[0, 1].plot(range(1, 1 + len(scar_dice_history)), scar_dice_history, 'c-', label='scar train dice')
-            axs[0, 1].plot(range(1, 1 + len(val_scar_dice_history)), val_scar_dice_history, 'g-', label='scar val dice')
-            axs[0, 1].plot(range(1, 1 + len(pap_dice_history)), pap_dice_history, 'm-', label='pap train dice')
-            axs[0, 1].plot(range(1, 1 + len(val_pap_dice_history)), val_pap_dice_history, 'y-', label='pap val dice')
-
+        t_dice_hx = history.history[f'{prefix}dice'] if not e2e_cascading else history.history[f'{prefix}general_out_dice']
+        v_dice_hx = history.history[f'val_{prefix}dice'] if not e2e_cascading else history.history[f'val_{prefix}general_out_dice']
+        axs[0, 1].plot(range(1, 1 + len(t_dice_hx)), t_dice_hx, 'r-', label='train dice')
+        axs[0, 1].plot(range(1, 1 + len(v_dice_hx)), v_dice_hx, 'b-', label='val dice')
         axs[0, 1].set(xlabel='epochs', ylabel='dice coefficient')
         axs[0, 1].legend(loc="lower right")
 
-        if len(self.labels) > 8:
-            colors = ['red'] * (len(self.labels) * 2)
-        else:
-            colors = [
-                'darkorange',
-                'coral',
-                'navy',
-                'dodgerblue',
-                'darkslategrey',
-                'teal',
-                'purple',
-                'darkorchid',
-                'maroon',
-                'crimson',
-                'green',
-                'limegreen',
-                'deeppink',
-                'hotpink',
-                'navy',
-                'mediumblue'
-            ]
+        t_class_dx_labels = [x for x in list(history.history.keys()) if 'val' not in x and 'loss' not in x and 'dice' not in x]
+        v_class_dx_labels = [x for x in list(history.history.keys()) if 'val' in x and 'loss' not in x and 'dice' not in x]
 
-        if self.model not in ['CascadedUNet3D']:
-            i = 0
-            for label in list(self.labels.values()):
-                curr_train_hx = history.history[label]
-                curr_val_hx = history.history[f'val_{label}']
-                axs[1, 0].plot(
-                    range(1, 1 + len(dice_coefficient_history)),
-                    curr_train_hx,
-                    color=colors[i],
-                    label=f'train {label} dice'
-                )
-                i += 1
-                axs[1, 1].plot(
-                    range(1, 1 + len(dice_coefficient_history)),
-                    curr_val_hx,
-                    color=colors[i],
-                    label=f'val {label} dice'
-                )
-                i += 1
+        if not e2e_cascading:
+            for x in t_class_dx_labels:
+                curr_hx = history.history[x]
+                color = colors.pop(0)
+                axs[1, 0].plot(range(1, 1 + len(curr_hx)), curr_hx, color=color, label=f'{x} dice')
+
+            for x in v_class_dx_labels:
+                curr_hx = history.history[x]
+                color = colors.pop(0)
+                axs[1, 1].plot(range(1, 1 + len(curr_hx)), curr_hx, color=color, label=f'{x} dice')
 
             axs[1, 0].set(xlabel='epochs', ylabel='dice coefficient')
             axs[1, 0].legend(loc="lower right")
@@ -357,13 +301,11 @@ class Trainer:
         model.summary(line_length=160)
 
         # TODO: assertions on all config stuff to prevent naughty values being given
-        # TODO: fix plot function
-        # TODO: cascaded networks: utilise masking of the input based on n previous models (customisable)
         # TODO: anatomical auto-encoder if time allows
         # TODO: de-noising auto-encoder if time allows
-        # TODO: slice quality weighted loss functions
         # TODO: add black space instead of removing non-square images (could cause bbox problems)
         # TODO: could try replacing UNet3DShallow with e.g., VNet if time allows
+        # TODO: end to end cascading networks for configs B and C
 
         # Learning rate decay: will be used if not 0, otherwise use static LR
         if self.lr_decay:
@@ -381,7 +323,7 @@ class Trainer:
         if self.model not in ['CascadedUNet3D']:
             if self.combine_labels:
                 metrics = [DiceMetric(self.batch_size)] + \
-                          [ClassWiseDiceMetric(self.batch_size, i, f'{i}_dice') for i in
+                          [ClassWiseDiceMetric(self.batch_size, i, str(i)) for i in
                            range(len(self.combine_labels))]
             else:
                 metrics = [DiceMetric(self.batch_size)] + \
@@ -422,11 +364,9 @@ class Trainer:
         with open(f'{self.model_save_path}/train_config.json', 'w') as f:
             f.write(json.dumps(config, indent=4))
         print(f'Saved training config to {self.model_save_path}/train_config.json')
-        print(history.history)
-        print(f'history: {[history.history[x] for x in history.history]}')
 
         # Plot the losses
-        # self.plot(history)
+        self.plot(history)
 
 
 if __name__ == '__main__':
