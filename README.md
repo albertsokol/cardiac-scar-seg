@@ -44,7 +44,7 @@ All the training settings you might need to adjust are found in `train_config.js
 * `"cascade"`: using the output of prior models to mask the current model sequentially, must be `dict` with following format, or left empty to ignore this setting
   ```json
     "cascade": {
-      "model_path": "/path/to/previous/model"
+      "model_path": "/path/to/previous/model",
       "keep_labels": [2]  
     }
   ```
