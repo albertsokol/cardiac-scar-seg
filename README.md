@@ -1,4 +1,4 @@
-x
+# Ventricular scar segmentation  
 
 ## Training settings: `train_config.json`
 
@@ -30,18 +30,40 @@ All the training settings you might need to adjust are found in `train_config.js
   * `"weighted softmax"`: softmax loss weighted by inverse class frequency for each label in `"labels"` or `"combine_labels"` if not none 
   * `"dice"`: basic dice loss on softmax output 
   * `"weighted softmax dice"`: mixed dice and weighted softmax loss functions 
-  * `"cascaded weighted softmax dice"`: weighted softmax dice loss for use with end-to-end cascaded network 
+  * `"quality weighted softmax dice"`: mixed dice and weighed softmax loss functions, also weighted by quality scores from `"quality_weighting"`
+  * `"cascaded weighted softmax dice"`: weighted softmax dice loss for use with end-to-end cascaded network
+* `"quality_weighting"`: dictionary of `str: float` pairs, where keys are quality scores, and values are the proportion by which the loss for that key is multiplied 
 * `"labels"`: dictionary of `str: str` pairs, where keys are value given to a class in the label file, and values are class names, e.g., `"1": "lv myo"`. This should represent the labels as per the manual segmentations. Must be `dict`
 * `"combine_labels"`: must be a `list` of `list[str]`, where any label class names occurring in an inner list will be combined to form a single label. Set to an empty list `[]` to switch off label combining. Label combining is used for training cascaded networks or automatic cropping models. For example, to create an automatic cropper, all heart tissue labels should be combined into one, so the correct value for this setting would be: 
-```json
-[
-  ["bg"],
-  ["lv lumen", "lv myo", "scar", "pap", "rv lumen", "rv myo", "aorta"]
-]
-```
+  ```json
+  [
+    ["bg"],
+    ["lv lumen", "lv myo", "scar", "pap", "rv lumen", "rv myo", "aorta"]
+  ]
+  ```
+* `"cascade"`: using the output of prior models to mask the current model sequentially, must be `dict` with following format, or left empty to ignore this setting
+  ```json
+    "cascade": {
+      "model_path": "/path/to/previous/model"
+      "keep_labels": [2]  
+    }
+  ```
+  where `"model_path"` is the `str` path to the previous pre-trained model, and `"keep_labels"` is a `list` of indices of output predictions to keep 
 * `"augmentation"`: parameters for simultaneous image and label data augmentation. Must be `dict` with the following settings: 
   * `"zoom"`: 
   * `"rotate"`: 
   * `"translate"`: 
   * `"brightness"`: 
   * `"deform"`: 
+
+
+## Prediction settings: `predict_config.json`
+
+First, set the parameters in `predict_config.json`:
+* `"model_path"`: path to the model to use for prediction
+* `"data_path"`: root to the data path to use 
+* `"dataset"`: the dataset split to use e.g., `train`, `val` and `test`
+
+Then, you can use:
+* `predict.py` to run prediction on a random file from the selected dataset and display the result in a scrollable window
+* `performance.py` to get the average global and class-wise dice scores for all files in the dataset
