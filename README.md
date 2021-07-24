@@ -60,7 +60,9 @@ All the training settings you might need to adjust are found in `train_config.js
 ## Prediction settings: `predict_config.json`
 
 First, set the parameters in `predict_config.json`:
-* `"model_path"`: path to the model to use for prediction
+* `"model_path"`: path to the model to use for prediction, must be `str` or `list`
+  * `str`: use a single model
+  * `list`: use with staggered cascaded networks - will automatically build a tree-style execution graph from all model paths and select the correct model for each label in the output  
 * `"data_path"`: root to the data path to use 
 * `"dataset"`: the dataset split to use e.g., `train`, `val` and `test`
 
