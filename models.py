@@ -1,7 +1,5 @@
 from abc import ABC
 
-from tensorflow.keras.utils import plot_model
-
 import tensorflow as tf
 from tensorflow.keras import applications
 from tensorflow.keras import layers
@@ -295,9 +293,3 @@ class CascadedUNet2DB(SegModel):
         unet_pap_out = unet_pap.define_architecture(mask_lv_lumen, 'sigmoid', out_name='pap_out')
 
         return unet_1_out, unet_scar_out, unet_pap_out
-
-
-if __name__ == '__main__':
-    c = CascadedUNet3DB([160, 160, 16], 8).create_model()
-    c.summary(line_length=160)
-    plot_model(c, 'CascadedUNet3Dplot.png', show_shapes=True)

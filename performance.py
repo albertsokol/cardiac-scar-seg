@@ -14,19 +14,16 @@ if __name__ == '__main__':
     with open('predict_config.json', 'r') as predict_config_file:
         predict_config = json.load(predict_config_file)
 
-    with open(os.path.join(predict_config['model_path'], 'train_config.json'), 'r') as train_config_file:
-        train_config = json.load(train_config_file)
-
-    plane = train_config['plane']
-
     # Load the correct Predictor class for the given model type
-    p = load_predictor(predict_config, train_config)
-    if train_config['model'] in ['UNet3D']:
+    p = load_predictor(predict_config)
+    plane = p.plane
+
+    if p.model_name in ['UNet3D']:
         dims = '3D'
         plane = ''
-    elif train_config['model'] in ['UNet3DShallow']:
+    elif p.model_name in ['UNet3DShallow']:
         dims = '3DShallow'
-    elif train_config['model'] in ['CascadedUNet3D']:
+    elif p.model_name in ['CascadedUNet3D']:
         dims = '3D'
         plane = ''
     else:

@@ -136,7 +136,7 @@ class WeightedSoftmaxDiceLossPlusQuality(__Loss):
         y_true, y_pred = args[0], args[1]
 
         # Update the quality for the current slice if the current call is for the 'qw_out' tensor
-        if self.qw_out_name in y_pred.name:
+        if self.qw_out_name in y_pred.model_path:
             if self.full_3d_mode:
                 self.curr_slice_qualities = y_pred
             else:
@@ -171,11 +171,11 @@ class CascadedWeightedSoftmaxDiceLoss(__Loss):
         y_true, y_pred = args[0], args[1]
 
         # First, get the softmax loss
-        if "general" in args[1].name:
+        if "general" in args[1].model_path:
             curr_weights = self.label_weights["general"]
             softmax_loss = - K.sum(curr_weights * y_true * K.log(self.clip(y_pred)))
         else:
-            if "scar" in args[1].name:
+            if "scar" in args[1].model_path:
                 curr_weights = self.label_weights["scar"]
             else:
                 curr_weights = self.label_weights["pap"]

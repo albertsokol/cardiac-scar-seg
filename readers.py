@@ -60,15 +60,16 @@ class IndexTracker:
 
 class __FileReader:
     """ Generic class for common file reading functions. """
-
     def __init__(self):
-        self.fig, self.ax = plt.subplots(1, 1)
+        pass
 
-    def scroll_view(self, img, plane='transverse'):
+    @staticmethod
+    def scroll_view(img, plane='transverse'):
         """ Open a scrollable matplotlib window to look through the given MRI image (must be numpy array). """
+        fig, ax = plt.subplots(1, 1)
         assert type(img) == np.ndarray, 'image must be a numpy array to use for scrolling.'
-        tracker = IndexTracker(self.ax, img, plane)
-        self.fig.canvas.mpl_connect('scroll_event', tracker.on_scroll)
+        tracker = IndexTracker(ax, img, plane)
+        fig.canvas.mpl_connect('scroll_event', tracker.on_scroll)
         plt.show()
 
     @staticmethod
@@ -120,14 +121,14 @@ class NIIReader(__FileReader):
 
 
 class NPYReader(__FileReader):
-    """ Class for reading image slices in .npy file format. """
+    """Class for reading image slices in .npy file format."""
 
     def __init__(self):
         super().__init__()
 
     @staticmethod
     def resize(img, dims, interpolation_order=3):
-        """ Resize the image to the given dimensions. """
+        """Resize the image to the given dimensions."""
         assert type(img) == np.ndarray, 'image must be a numpy array to resize.'
         # If 2D then use open CV for resizing
         if len(dims) == 2:
@@ -141,7 +142,7 @@ class NPYReader(__FileReader):
             return zoom(img, magnify, order=interpolation_order)
 
     def read(self, f):
-        """ Load the image using numpy. """
+        """Load the image using numpy."""
         return np.load(f)
 
 

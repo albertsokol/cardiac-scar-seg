@@ -94,12 +94,8 @@ class Masker:
             'dataset': self.dataset,
         }
 
-        with open(os.path.join(predict_config['model_path'], 'train_config.json'), 'r') as train_config_file:
-            train_config = json.load(train_config_file)
-            print(f'Using training config for nested model: {train_config}')
-
         # Load the masking model as a Predictor object
-        p = load_predictor(predict_config, train_config)
+        p = load_predictor(predict_config)
 
         # Iterate over all the images, getting predicted labels
         for i, root in enumerate(tqdm(roots)):

@@ -105,11 +105,9 @@ class Cropper:
             'data_path': self.data_path,
             'dataset': self.dataset,
         }
-        with open(os.path.join(predict_config['model_path'], 'train_config.json'), 'r') as train_config_file:
-            train_config = json.load(train_config_file)
 
         # Load the cropper model as a Predictor object
-        p = load_predictor(predict_config, train_config)
+        p = load_predictor(predict_config)
 
         # Iterate over all the images, getting predicted labels
         for i, root in enumerate(tqdm(roots)):
