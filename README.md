@@ -1,5 +1,11 @@
 # Ventricular scar segmentation  
 
+## Setting up the data 
+
+* Putting all 3D in a 3D folder, specify the names they should have (standard)
+* Manually split into `train` and `val` folders  
+* Running scripts in util to create the 2D and 3DShallow datasets 
+
 ## Training settings: `train_config.json`
 
 All the training settings you might need to adjust are found in `train_config.json`. Update this file, then run `trainer.py` to train new models 

@@ -2,11 +2,13 @@
 
 import os
 import json
+import time
 
 import numpy as np
 from tqdm import tqdm
 
 from predict import load_predictor
+from util import PColour
 
 
 if __name__ == '__main__':
@@ -40,6 +42,7 @@ if __name__ == '__main__':
     else:
         class_wise_dices = np.zeros([len(p.labels_dict)])
 
+    start = time.time()
     # Run the model in predictions mode and get the dice scores for each scan
     for root in tqdm(roots):
         image, label, pred_label = p.predict(fname=root, display=False)
@@ -55,3 +58,5 @@ if __name__ == '__main__':
     else:
         for i, label in enumerate(p.combine_labels):
             print(f'{", ".join(label):<64}:  {class_wise_dices[i] / len(roots):.4f}')
+
+    print(f'{PColour.OKGREEN}Time taken for inference on {len(roots)} samples: {time.time() - start:.2f} seconds.{PColour.ENDC}')

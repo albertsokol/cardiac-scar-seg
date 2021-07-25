@@ -332,8 +332,10 @@ class Predictor2D(__Predictor):
             pred_logits = np.empty(list(images.shape[:-1]) + [len(self.labels_dict)], dtype=np.int8)
 
         # Create a new model which pulls out the logits before the softmax activation at the end
-        pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=self.model.layers[-2].output)
-        raise AttributeError('Need to confirm this is pulling out the correct layer output')
+        if self.quality_weighted_mode:
+            pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=self.model.layers[-1].output)
+        else:
+            pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=self.model.layers[-2].output)
 
         for i in range(images.shape[0]):
             if self.quality_weighted_mode:

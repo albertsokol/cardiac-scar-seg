@@ -1,9 +1,5 @@
 {
-  "model_path": [
-    "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/2D_B_stag_first",
-    "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/2D_B_stag_scar",
-    "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/2D_B_stag_pap"
-  ],
+  "model_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3D_full",
   "data_path": "/media/y4tsu/ml_data/cmr",
   "dataset": "val"
 }

@@ -174,5 +174,63 @@ def rotate_incorrect_orientations():
     plt.show()
 
 
+def create_2d_dataset(root):
+    """
+    Create the 2D images and labels slices so that they can be loaded quickly in a shuffled order during training.
+
+    :param root: str: path to the data root (one level up from the '3D' folder)
+    """
+    print(f'Creating 2D dataset from data at {os.path.join(root, "3D")}')
+    reader = NIIReader()
+    for g in ['train', 'val']:
+        for x in tqdm(sorted(os.listdir(os.path.join(root, '3D', g)))):
+            image_fname = os.path.join(root, '3D', g, x, f'{x}_SAX.nii.gz')
+            label_fname = os.path.join(root, '3D', g, x, f'{x}_SAX_mask2.nii.gz')
+
+            image = reader.read(image_fname)
+            label = reader.read(label_fname)
+
+            os.mkdir(os.path.join(root, '2D', g, 'coronal', x))
+            os.mkdir(os.path.join(root, '2D', g, 'sagittal', x))
+            os.mkdir(os.path.join(root, '2D', g, 'transverse', x))
+
+            for j in range(image.shape[0]):
+                np.save(os.path.join(root, '2D', g, 'coronal', f'{x}/{x}_{j:03}_image'), image[j, :, :])
+                np.save(os.path.join(root, '2D', g, 'coronal', f'{x}/{x}_{j:03}_label'), label[j, :, :])
+            for j in range(image.shape[1]):
+                np.save(os.path.join(root, '2D', g, 'sagittal', f'{x}/{x}_{j:03}_image'), image[:, j, :])
+                np.save(os.path.join(root, '2D', g, 'sagittal', f'{x}/{x}_{j:03}_label'), label[:, j, :])
+            for j in range(image.shape[2]):
+                np.save(os.path.join(root, '2D', g, 'transverse', f'{x}/{x}_{j:03}_image'), image[:, :, j])
+                np.save(os.path.join(root, '2D', g, 'transverse', f'{x}/{x}_{j:03}_label'), label[:, :, j])
+
+
+def create_3dshallow_dataset(root, depth=3):
+    """
+    Create 3D shallow images and save with the given depth to allow fast shuffled loading during training.
+
+    :param root: str: path to the data root (one level up from the '3D' folder)
+    :param depth: int: slice thickness to create for images
+    """
+    assert depth > 1 and depth % 2 == 1, f"depth must be an odd number greater than 1 but got {depth}"
+    print(f'Creating depth={depth} 3DShallow dataset from data at {os.path.join(root, "3D")}')
+    reader = NIIReader()
+
+    for g in ['train', 'val']:
+        for x in tqdm(sorted(os.listdir(os.path.join(root, '3D', g)))):
+            image_fname = os.path.join(root, '3D', g, x, f'{x}_SAX.nii.gz')
+            label_fname = os.path.join(root, '3D', g, x, f'{x}_SAX_mask2.nii.gz')
+
+            image = reader.read(image_fname)
+            label = reader.read(label_fname)
+
+            os.mkdir(os.path.join(root, '3DShallow', g, 'transverse', x))
+
+            for j in range(image.shape[2] - depth + 1):
+                np.save(os.path.join(root, '3DShallow', g, 'transverse', f'{x}/{x}_{j:03}_image'), image[:, :, j:j + depth])
+                np.save(os.path.join(root, '3DShallow', g, 'transverse', f'{x}/{x}_{j:03}_label'), label[:, :, j:j + depth])
+
+
 if __name__ == '__main__':
-    analyse_quality_labels_class_wise()
+    create_2d_dataset('/media/y4tsu/ml_data/cmr')
+    create_3dshallow_dataset('/media/y4tsu/ml_data/cmr', depth=3)

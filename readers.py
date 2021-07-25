@@ -1,11 +1,8 @@
-import os
-
 import nibabel as nib
 import numpy as np
 import cv2
 from matplotlib import pyplot as plt
 from scipy.ndimage import zoom
-from tqdm import tqdm
 
 
 class IndexTracker:
@@ -144,71 +141,3 @@ class NPYReader(__FileReader):
     def read(self, f):
         """Load the image using numpy."""
         return np.load(f)
-
-
-if __name__ == '__main__':
-    reader = NIIReader()
-    base_folder = '/media/y4tsu/ml_data/cmr/3D/test'
-
-    # roots = sorted(os.listdir(base_folder))
-    # ax_thickness = []
-    # hw = []
-    # squares = 0
-    # print(f'{len(roots)} total scans found')
-    #
-    # for i, root in enumerate(roots):
-    #     image = np.squeeze(reader.read(os.path.join(base_folder, root, f'{root}_SAX.nii.gz')))
-    #     shape = image.shape
-    #     label = np.squeeze(reader.read(os.path.join(base_folder, root, f'{root}_SAX_mask2.nii.gz')))
-    #
-    #     if shape[0] != shape[1]:
-    #         print(f'{root} is non-square')
-    #
-    #     hw += [shape[0]]
-    #     ax_thickness += [shape[2]]
-    #     squares += 1 if shape[0] == shape[1] else 0
-    #
-    # print(f'num squares: {squares}')
-    # fig, axs = plt.subplots(2, 1)
-    # axs[0].hist(ax_thickness)
-    # axs[1].hist(hw)
-    # plt.show()
-
-    # Save all 3D as 2D numpy arrays in each plane to allow shuffled loading during 2D training
-    # for g in ['train', 'val', 'test']:
-    #     for x in tqdm(sorted(os.listdir(f'/media/y4tsu/ml_data/cmr/3D/{g}/'))):
-    #         image_fname = os.path.join('/media/y4tsu/ml_data/cmr/3D/', g, x, f'{x}_SAX.nii.gz')
-    #         label_fname = os.path.join('/media/y4tsu/ml_data/cmr/3D/', g, x, f'{x}_SAX_mask2.nii.gz')
-    #
-    #         image = reader.read(image_fname)
-    #         label = reader.read(label_fname)
-    #
-    #         os.mkdir(f'/media/y4tsu/ml_data/cmr/2D/{g}/coronal/{x}')
-    #         os.mkdir(f'/media/y4tsu/ml_data/cmr/2D/{g}/sagittal/{x}')
-    #         os.mkdir(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}')
-    #
-    #         for j in range(image.shape[0]):
-    #             np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/coronal/{x}/{x}_{j:03}_image', image[j, :, :])
-    #             np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/coronal/{x}/{x}_{j:03}_label', label[j, :, :])
-    #         for j in range(image.shape[1]):
-    #             np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/sagittal/{x}/{x}_{j:03}_image', image[:, j, :])
-    #             np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/sagittal/{x}/{x}_{j:03}_label', label[:, j, :])
-    #         for j in range(image.shape[2]):
-    #             np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}/{x}_{j:03}_image', image[:, :, j])
-    #             np.save(f'/media/y4tsu/ml_data/cmr/2D/{g}/transverse/{x}/{x}_{j:03}_label', label[:, :, j])
-
-    # Save all 3D as depth=n slices to allow shuffled loading during training
-    depth = 3
-    for g in ['train', 'val', 'test']:
-        for x in tqdm(sorted(os.listdir(f'/media/y4tsu/ml_data/cmr/3D/{g}/'))):
-            image_fname = os.path.join('/media/y4tsu/ml_data/cmr/3D/', g, x, f'{x}_SAX.nii.gz')
-            label_fname = os.path.join('/media/y4tsu/ml_data/cmr/3D/', g, x, f'{x}_SAX_mask2.nii.gz')
-
-            image = reader.read(image_fname)
-            label = reader.read(label_fname)
-
-            os.mkdir(f'/media/y4tsu/ml_data/cmr/3DShallow/{g}/transverse/{x}')
-
-            for j in range(image.shape[2] - depth + 1):
-                np.save(f'/media/y4tsu/ml_data/cmr/3DShallow/{g}/transverse/{x}/{x}_{j:03}_image', image[:, :, j:j + depth])
-                np.save(f'/media/y4tsu/ml_data/cmr/3DShallow/{g}/transverse/{x}/{x}_{j:03}_label', label[:, :, j:j + depth])
