@@ -117,6 +117,6 @@ class Masker:
             if p.dimensionality == '2D':
                 self.save_2d_mask(masked_image, root)
             elif p.dimensionality == '3DShallow':
-                self.save_3d_shallow_mask(masked_image, root, depth=train_config['image_size'][-1])
+                self.save_3d_shallow_mask(masked_image, root, p.image_size[-1])
             else:
                 self.save_3d_mask(masked_image, root)

@@ -299,61 +299,66 @@ class Trainer:
 
     def train(self):
         """ Train the model. """
-        model = self.model_dict[self.model](
-            input_size=self.image_size,
-            output_length=len(self.combine_labels) if self.combine_labels else len(self.labels),
-            quality_weighted_mode=self.quality_weighted_mode,
-        ).create_model()
+        s = tf.distribute.MirroredStrategy()
+        print(tf.config.experimental.list_physical_devices("GPU"))
+        with s.scope():
+            model = self.model_dict[self.model](
+                input_size=self.image_size,
+                output_length=len(self.combine_labels) if self.combine_labels else len(self.labels),
+                quality_weighted_mode=self.quality_weighted_mode,
+            ).create_model()
 
-        plot_model(model, f'plot/{self.model}_plot.png', show_shapes=True)
-        model.summary(line_length=160)
+            plot_model(model, f'plot/{self.model}_plot.png', show_shapes=True)
+            model.summary(line_length=160)
 
-        # TODO: assertions on all config stuff to prevent naughty values being given
-        # TODO: anatomical auto-encoder if time allows
-        # TODO: de-noising auto-encoder if time allows
-        # TODO: add black space instead of removing non-square images (could cause bbox problems)
-        # TODO: could try replacing UNet3DShallow with e.g., VNet if time allows
-        # TODO: end to end cascading networks for configs B and C
+            # TODO: assertions on all config stuff to prevent naughty values being given
+            # TODO: anatomical auto-encoder if time allows
+            # TODO: de-noising auto-encoder if time allows
+            # TODO: add black space instead of removing non-square images (could cause bbox problems)
+            # TODO: could try replacing UNet3DShallow with e.g., VNet if time allows
+            # TODO: end to end cascading networks for configs B and C
 
-        # Learning rate decay: will be used if not 0, otherwise use static LR
-        if self.lr_decay:
-            schedule = tf.keras.optimizers.schedules.ExponentialDecay(
-                self.lr,
-                self.num_epochs * len(self.train_gen.image_fnames) // self.batch_size,
-                self.lr_decay
-            )
-            self.callbacks += [LearningRatePrinter()]
-        else:
-            schedule = self.lr
-
-        optimizer = tf.keras.optimizers.Adam(learning_rate=schedule)
-
-        if self.model not in ['CascadedUNet3DB', 'CascadedUNet2DB']:
-            if self.combine_labels:
-                metrics = [DiceMetric(self.batch_size)] + \
-                          [ClassWiseDiceMetric(self.batch_size, i, str(i)) for i in
-                           range(len(self.combine_labels))]
+            # Learning rate decay: will be used if not 0, otherwise use static LR
+            if self.lr_decay:
+                schedule = tf.keras.optimizers.schedules.ExponentialDecay(
+                    self.lr,
+                    self.num_epochs * len(self.train_gen.image_fnames) // self.batch_size,
+                    self.lr_decay
+                )
+                self.callbacks += [LearningRatePrinter()]
             else:
-                metrics = [DiceMetric(self.batch_size)] + \
-                          [ClassWiseDiceMetric(self.batch_size, i, self.labels[label]) for i, label in
-                           zip(range(len(self.labels)), self.labels)]
-            if self.quality_weighted_mode:
-                metrics = {'m': metrics}
-        else:
-            metrics = {
-                'general_out':
-                    [DiceMetric(self.batch_size)] +
-                    [ClassWiseDiceMetric(self.batch_size, i, self.labels[label]) for i, label in
-                     zip(range(6), ['0', '1', '2', '4', '5', '7'])],
-                'scar_out': [DiceMetric(self.batch_size)],
-                'pap_out': [DiceMetric(self.batch_size)]
-            }
+                schedule = self.lr
 
-        model.compile(
-            optimizer=optimizer,
-            loss=self.loss_fn,
-            metrics=metrics,
-        )
+            optimizer = tf.keras.optimizers.Adam(learning_rate=schedule)
+
+            if self.model not in ['CascadedUNet3DB', 'CascadedUNet2DB']:
+                if self.combine_labels:
+                    metrics = [DiceMetric(self.batch_size)] + \
+                              [ClassWiseDiceMetric(self.batch_size, i, str(i)) for i in
+                               range(len(self.combine_labels))]
+                else:
+                    metrics = [DiceMetric(self.batch_size)] + \
+                              [ClassWiseDiceMetric(self.batch_size, i, self.labels[label]) for i, label in
+                               zip(range(len(self.labels)), self.labels)]
+                if self.quality_weighted_mode:
+                    metrics = {'m': metrics}
+            else:
+                metrics = {
+                    'general_out':
+                        [DiceMetric(self.batch_size)] +
+                        [ClassWiseDiceMetric(self.batch_size, i, self.labels[label]) for i, label in
+                         zip(range(6), ['0', '1', '2', '4', '5', '7'])],
+                    'scar_out': [DiceMetric(self.batch_size)],
+                    'pap_out': [DiceMetric(self.batch_size)]
+                }
+
+            model.compile(
+                optimizer=optimizer,
+                loss=self.loss_fn,
+                metrics=metrics,
+            )
+
+        print(f'{PColour.OKBLUE}Compiled model! Starting training ... {PColour.ENDC}')
 
         start = time.time()
 

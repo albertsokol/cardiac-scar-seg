@@ -209,7 +209,6 @@ class Generator3D(__Generator):
             cascade,
             quality_weighting_scores,
         )
-        # TODO: if cascade -> need to use fnames from the mask folder instead - test this
         if cascade:
             self.reader = NPYReader()
             self.image_fnames = [

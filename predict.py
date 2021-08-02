@@ -2,9 +2,7 @@ import json
 import os
 import tensorflow as tf
 import numpy as np
-import matplotlib.pyplot as plt
 import random
-import time
 from scipy.special import softmax
 
 from cropper import Cropper
@@ -630,7 +628,6 @@ class PredictorStaggeredCascaded:
                 # Also update the self.node_map with all labels in label dict here
                 self.node_map = {k: {"node": tree, "len": len(curr_train_config['labels'])} for k in list(curr_train_config['labels'].values())}
                 self.label_map = {curr_train_config['labels'][k]: int(k) for k in curr_train_config['labels']}
-                print(self.label_map)
             break
         assert tree is not None, "No base model found - at least one model in the list should not be cascaded."
 
@@ -665,7 +662,7 @@ class PredictorStaggeredCascaded:
     def predict(self, fname=None, display=False):
         if self.tree is None:
             self.tree = self.construct_tree()
-        self.update_node_map(self.tree)
+            self.update_node_map(self.tree)
 
         image, label, pred_label = self.bfs_run(self.tree, fname, display)
 

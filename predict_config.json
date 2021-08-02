@@ -1,5 +1,5 @@
 {
-  "model_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3D_full",
-  "data_path": "/media/y4tsu/ml_data/cmr",
+  "model_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3D_tr_autocrop",
+  "data_path": "/media/y4tsu/ml-fast/cmr",
   "dataset": "val"
 }

@@ -181,6 +181,18 @@ def create_2d_dataset(root):
     :param root: str: path to the data root (one level up from the '3D' folder)
     """
     print(f'Creating 2D dataset from data at {os.path.join(root, "3D")}')
+
+    assert not os.path.exists(os.path.join(root, '2D')), f"please delete the {root}/2D folder before proceeding"
+    os.mkdir(os.path.join(root, '2D'))
+    os.mkdir(os.path.join(root, '2D', 'train'))
+    os.mkdir(os.path.join(root, '2D', 'val'))
+    os.mkdir(os.path.join(root, '2D', 'train', 'transverse'))
+    os.mkdir(os.path.join(root, '2D', 'val', 'transverse'))
+    os.mkdir(os.path.join(root, '2D', 'train', 'coronal'))
+    os.mkdir(os.path.join(root, '2D', 'val', 'coronal'))
+    os.mkdir(os.path.join(root, '2D', 'train', 'sagittal'))
+    os.mkdir(os.path.join(root, '2D', 'val', 'sagittal'))
+
     reader = NIIReader()
     for g in ['train', 'val']:
         for x in tqdm(sorted(os.listdir(os.path.join(root, '3D', g)))):
@@ -216,6 +228,13 @@ def create_3dshallow_dataset(root, depth=3):
     print(f'Creating depth={depth} 3DShallow dataset from data at {os.path.join(root, "3D")}')
     reader = NIIReader()
 
+    assert not os.path.exists(os.path.join(root, '3DShallow')), f"please delete the {root}/3DShallow folder before proceeding"
+    os.mkdir(os.path.join(root, '3DShallow'))
+    os.mkdir(os.path.join(root, '3DShallow', 'train'))
+    os.mkdir(os.path.join(root, '3DShallow', 'val'))
+    os.mkdir(os.path.join(root, '3DShallow', 'train', 'transverse'))
+    os.mkdir(os.path.join(root, '3DShallow', 'val', 'transverse'))
+
     for g in ['train', 'val']:
         for x in tqdm(sorted(os.listdir(os.path.join(root, '3D', g)))):
             image_fname = os.path.join(root, '3D', g, x, f'{x}_SAX.nii.gz')
@@ -232,5 +251,5 @@ def create_3dshallow_dataset(root, depth=3):
 
 
 if __name__ == '__main__':
-    create_2d_dataset('/media/y4tsu/ml_data/cmr')
+    # create_2d_dataset('/media/y4tsu/ml_data/cmr')
     create_3dshallow_dataset('/media/y4tsu/ml_data/cmr', depth=3)
