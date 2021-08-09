@@ -119,7 +119,7 @@ class __Generator(Sequence, ABC):
                 quality_weightings[i, ...] = self.get_quality_weightings(fname)
 
         if self.quality_weighting_scores:
-            return {'model_in': x, 'qw_in': quality_weightings}, {'m': y, 'qw_out': quality_weightings}
+            return {'model_in': x, 'qw_in': quality_weightings}, {'qw_out': quality_weightings, 'm': y}
         else:
             return x, y
 

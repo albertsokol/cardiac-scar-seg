@@ -127,7 +127,7 @@ class Cropper:
             _, label, pred_label = p.predict(fname, display=False)
 
             # Remove noise and small islands from the prediction
-            pred_label = self.__clean_prediction(pred_label)
+            # pred_label = self.__clean_prediction(pred_label)
 
             # In the case where an image has different dimensions to model input, needs to be re-scaled
             new_pred_label = np.empty(image_size, dtype=np.int8)

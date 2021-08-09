@@ -20,7 +20,7 @@ from losses import (
     WeightedSoftmaxDiceLossPlusQuality
 )
 from metrics import DiceMetric, ClassWiseDiceMetric
-from models import UNet2D, UNet3DShallow, UNet3D, CascadedUNet2DB, CascadedUNet3DB
+from models import UNet2D, UNet3DShallow, UNet3D, CascadedUNet2DB, CascadedUNet3DB, VNet, VNetShallow
 from util import PColour
 
 
@@ -55,13 +55,13 @@ class Trainer:
         if not os.path.exists(model_save_path):
             os.mkdir(model_save_path)
 
-        if model in ['UNet3D']:
+        if model in ['UNet3D', 'VNet']:
             self.dimensionality = '3D'
             self.data_root = '3D'
             print(f'plane ignored since using 3D model: {model}')
             plane = ""
             self.augmenter = Augmenter3D(**augmentation)
-        elif model in ['UNet3DShallow']:
+        elif model in ['UNet3DShallow', 'VNetShallow']:
             self.dimensionality = '3DShallow'
             self.data_root = '3DShallow'
             self.augmenter = Augmenter3D(**augmentation)
@@ -96,6 +96,8 @@ class Trainer:
             "UNet2D": UNet2D,
             "CascadedUNet3DB": CascadedUNet3DB,
             "CascadedUNet2DB": CascadedUNet2DB,
+            "VNet": VNet,
+            "VNetShallow": VNetShallow,
         }
         self.gen_dict = {
             "3D": Generator3D,
@@ -183,7 +185,6 @@ class Trainer:
                 batch_size,
                 image_size,
                 self.calculate_label_weights(),
-                dimensionality=self.dimensionality,
             )
         elif loss_fn in ['cascaded weighted softmax dice']:
             self.loss_fn = loss_dict[loss_fn](batch_size, image_size, self.calculate_label_weights_cascaded())
@@ -314,8 +315,6 @@ class Trainer:
             # TODO: assertions on all config stuff to prevent naughty values being given
             # TODO: anatomical auto-encoder if time allows
             # TODO: de-noising auto-encoder if time allows
-            # TODO: add black space instead of removing non-square images (could cause bbox problems)
-            # TODO: could try replacing UNet3DShallow with e.g., VNet if time allows
             # TODO: end to end cascading networks for configs B and C
 
             # Learning rate decay: will be used if not 0, otherwise use static LR

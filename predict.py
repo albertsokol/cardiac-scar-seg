@@ -18,9 +18,9 @@ def load_predictor(predict_config):
         with open(os.path.join(predict_config['model_path'], 'train_config.json'), 'r') as train_config_file:
             train_config = json.load(train_config_file)
         # Then load the model
-        if train_config['model'] in ['UNet3D']:
+        if train_config['model'] in ['UNet3D', 'VNet']:
             p = Predictor3D(**predict_config, train_config=train_config)
-        elif train_config['model'] in ['UNet3DShallow']:
+        elif train_config['model'] in ['UNet3DShallow', 'VNetShallow']:
             p = Predictor3DShallow(**predict_config, train_config=train_config)
         elif train_config['model'] in ['CascadedUNet2DB']:
             p = Predictor2DCascadedB(**predict_config, train_config=train_config)

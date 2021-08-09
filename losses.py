@@ -109,7 +109,7 @@ class WeightedSoftmaxDiceLossPlusQuality(__Loss):
     """
     A combination of weighted cross-entropy loss and Dice loss with adjustable weighting and quality score weighting.
     """
-    def __init__(self, batch_size, image_size, label_weights, dice_weight=0.5, dimensionality=None):
+    def __init__(self, batch_size, image_size, label_weights, dice_weight=0.5):
         """
         Initialiser for WeightedSoftmaxDiceLossPlusQuality.
 
@@ -124,25 +124,25 @@ class WeightedSoftmaxDiceLossPlusQuality(__Loss):
         self.label_weights = label_weights
         self.dice_weight = dice_weight
         self.curr_slice_qualities = None
-        self.full_3d_mode = True if dimensionality == '3D' else False
-        if '3D' in dimensionality:
-            self.qw_out_name = "IteratorGetNext:1"
+        self.full_3d_mode = True if len(image_size) > 2 else False
+        if self.full_3d_mode:
+            self.qw_out_name = ["IteratorGetNext:1", "Identity_1:0"]
             self.sum_axes = [1, 2, 4]
         else:
-            self.qw_out_name = "ExpandDims:0"
+            self.qw_out_name = ["ExpandDims:0"]
             self.sum_axes = [1, 2, 3]
 
     def call(self, *args, **kwargs):
         y_true, y_pred = args[0], args[1]
 
         # Update the quality for the current slice if the current call is for the 'qw_out' tensor
-        if self.qw_out_name in y_pred.model_path:
+        if any([x in y_pred.name for x in self.qw_out_name]):
             if self.full_3d_mode:
-                self.curr_slice_qualities = y_pred
+                self.curr_slice_qualities = tf.identity(y_pred)
             else:
                 self.curr_slice_qualities = tf.squeeze(y_pred)
             # Return a loss of 0 for this case
-            return 0
+            return 0.
 
         # First, get the softmax loss
         softmax_loss = - K.sum(self.label_weights * y_true * K.log(self.clip(y_pred)), axis=self.sum_axes)
