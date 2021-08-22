@@ -232,57 +232,61 @@ class VNet(SegModel):
     def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(5, 5, 5), transpose_kernel_size=(2, 2, 2)):
         super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, transpose_kernel_size)
 
-    def side_conv_block(self, m_in, filters, length=1):
+    def side_conv_block(self, m_in, filters, length=1, add=True):
         """3D residual sideways convolution block."""
         m = layers.Conv3D(filters, self.kernel_size, padding='same')(m_in)
-        m = layers.PReLU(m)
+        m = layers.PReLU()(m)
         m = layers.BatchNormalization()(m)
 
         if length >= 2:
             m = layers.Conv3D(filters, self.kernel_size, padding='same')(m)
-            m = layers.PReLU(m)
+            m = layers.PReLU()(m)
             m = layers.BatchNormalization()(m)
 
         if length >= 3:
             m = layers.Conv3D(filters, self.kernel_size, padding='same')(m)
-            m = layers.PReLU(m)
+            m = layers.PReLU()(m)
             m = layers.BatchNormalization()(m)
 
-        return m + m_in
+        if add:
+            return m + m_in
+        else:
+            return m
 
-    def up_conv_block(self, m, prev, filters, length=1, strides=(2, 2, 2)):
+    def up_conv_block(self, m_in, prev, filters, length=1, strides=(2, 2, 2)):
         """ 3D up-convolution block. """
-        m = layers.Conv3DTranspose(
+        m_up = layers.Conv3DTranspose(
             filters,
             self.transpose_kernel_size,
             strides=strides,
             padding='same',
-        )(m)
-        m = layers.PReLU(m)
+        )(m_in)
+        m = layers.PReLU()(m_up)
         m = layers.BatchNormalization()(m)
 
         m = layers.Concatenate()([m, prev])
+        m = self.side_conv_block(m, filters, length, add=False)
 
-        return self.side_conv_block(m, filters, length)
+        return m + m_up
 
     def define_architecture(self, model_input, final_activation='softmax', out_name='m'):
         """ Build the V-Net model. """
         # Downsampling / encoding portion
         conv0 = self.side_conv_block(model_input, 16, length=1)
-        down0 = layers.Conv3D(16, (2, 2, 2), strides=(2, 2, 2), padding='same')(conv0)
-        down0 = layers.PReLU(down0)
+        down0 = layers.Conv3D(32, (2, 2, 2), strides=(2, 2, 2), padding='same')(conv0)
+        down0 = layers.PReLU()(down0)
 
         conv1 = self.side_conv_block(down0, 32, length=2)
-        down1 = layers.Conv3D(32, (2, 2, 2), strides=(2, 2, 2), padding='same')(conv1)
-        down1 = layers.PReLU(down1)
+        down1 = layers.Conv3D(64, (2, 2, 2), strides=(2, 2, 2), padding='same')(conv1)
+        down1 = layers.PReLU()(down1)
 
         conv2 = self.side_conv_block(down1, 64, length=3)
-        down2 = layers.Conv3D(64, (2, 2, 2), strides=(2, 2, 2), padding='same')(conv2)
-        down2 = layers.PReLU(down2)
+        down2 = layers.Conv3D(128, (2, 2, 2), strides=(2, 2, 2), padding='same')(conv2)
+        down2 = layers.PReLU()(down2)
 
         conv3 = self.side_conv_block(down2, 128, length=3)
-        down3 = layers.Conv3D(128, (2, 2, 2), strides=(2, 2, 2), padding='same')(conv3)
-        down3 = layers.PReLU(down3)
+        down3 = layers.Conv3D(256, (2, 2, 2), strides=(2, 2, 2), padding='same')(conv3)
+        down3 = layers.PReLU()(down3)
 
         # Middle of network
         conv4 = self.side_conv_block(down3, 256, length=3)
@@ -308,20 +312,20 @@ class VNetShallow(VNet):
         """ Build the V-Net model. """
         # Downsampling / encoding portion
         conv0 = self.side_conv_block(model_input, 16, length=1)
-        down0 = layers.Conv3D(16, (2, 2, 2), strides=(2, 2, 1), padding='same')(conv0)
-        down0 = layers.PReLU(down0)
+        down0 = layers.Conv3D(32, (2, 2, 2), strides=(2, 2, 1), padding='same')(conv0)
+        down0 = layers.PReLU()(down0)
 
         conv1 = self.side_conv_block(down0, 32, length=2)
-        down1 = layers.Conv3D(32, (2, 2, 2), strides=(2, 2, 1), padding='same')(conv1)
-        down1 = layers.PReLU(down1)
+        down1 = layers.Conv3D(64, (2, 2, 2), strides=(2, 2, 1), padding='same')(conv1)
+        down1 = layers.PReLU()(down1)
 
         conv2 = self.side_conv_block(down1, 64, length=3)
-        down2 = layers.Conv3D(64, (2, 2, 2), strides=(2, 2, 1), padding='same')(conv2)
-        down2 = layers.PReLU(down2)
+        down2 = layers.Conv3D(128, (2, 2, 2), strides=(2, 2, 1), padding='same')(conv2)
+        down2 = layers.PReLU()(down2)
 
         conv3 = self.side_conv_block(down2, 128, length=3)
-        down3 = layers.Conv3D(128, (2, 2, 2), strides=(2, 2, 1), padding='same')(conv3)
-        down3 = layers.PReLU(down3)
+        down3 = layers.Conv3D(256, (2, 2, 2), strides=(2, 2, 1), padding='same')(conv3)
+        down3 = layers.PReLU()(down3)
 
         # Middle of network
         conv4 = self.side_conv_block(down3, 256, length=3)
@@ -404,12 +408,12 @@ class DenoisingUNet2D:
         return models.Model(inputs=model_input, outputs=self.define_architecture(model_input))
 
 
-class CascadedUNet3DB(SegModel):
+class CascadedUNet3DShallowB(SegModel):
     def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3, 3), transpose_kernel_size=(2, 2, 2)):
         super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, transpose_kernel_size)
 
     def define_architecture(self, model_input, out_name=None):
-        unet_1 = UNet3D(self.input_size, 6, self.kernel_size, self.transpose_kernel_size)
+        unet_1 = UNet3DShallow(self.input_size, 6, self.kernel_size, self.transpose_kernel_size)
         unet_1_out = unet_1.define_architecture(model_input, out_name='general_out')
         unet_1_out_softmax = tf.math.argmax(unet_1_out, axis=-1, output_type=tf.dtypes.int32)
         unet_1_out_softmax = tf.expand_dims(unet_1_out_softmax, axis=-1)
@@ -419,35 +423,50 @@ class CascadedUNet3DB(SegModel):
         mask_lv_lumen = tf.where(tf.math.equal(unet_1_out_softmax, 1), model_input, 0)
 
         # Build the cascaded models
-        unet_scar = UNet3D(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
+        unet_scar = UNet3DShallow(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
         unet_scar_out = unet_scar.define_architecture(mask_lv_myo, 'sigmoid', out_name='scar_out')
 
-        unet_pap = UNet3D(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
+        unet_pap = UNet3DShallow(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
         unet_pap_out = unet_pap.define_architecture(mask_lv_lumen, 'sigmoid', out_name='pap_out')
 
         return unet_1_out, unet_scar_out, unet_pap_out
 
 
-class CascadedUNet2DB(SegModel):
-    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3), transpose_kernel_size=(2, 2), depth=3):
+class CascadedUNet3DShallowC(SegModel):
+    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3, 3), transpose_kernel_size=(2, 2, 2)):
         super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, transpose_kernel_size)
-        self.depth = depth
 
     def define_architecture(self, model_input, out_name=None):
-        unet_1 = UNet2D(self.input_size, 6, self.kernel_size, self.transpose_kernel_size)
-        unet_1_out = unet_1.define_architecture(model_input, out_name='general_out')
-        unet_1_out_softmax = tf.math.argmax(unet_1_out, axis=-1, output_type=tf.dtypes.int32)
-        unet_1_out_softmax = tf.expand_dims(unet_1_out_softmax, axis=-1)
+        unet_root = UNet3DShallow(self.input_size, 4, self.kernel_size, self.transpose_kernel_size)
+        unet_root_out = unet_root.define_architecture(model_input, out_name='general_out')
+        unet_root_out_softmax = tf.math.argmax(unet_root_out, axis=-1, output_type=tf.dtypes.int32)
+        unet_root_out_softmax = tf.expand_dims(unet_root_out_softmax, axis=-1)
 
-        # Get masked myocardium and lumen based on the predictions which will be used by the cascaded models
-        mask_lv_myo = tf.where(tf.math.equal(unet_1_out_softmax, 2), model_input, 0)
-        mask_lv_lumen = tf.where(tf.math.equal(unet_1_out_softmax, 1), model_input, 0)
+        # Get left heart lumen and myocardium segmentations
+        masked_l_ht = tf.where(tf.math.equal(unet_root_out_softmax, 1), model_input, 0)
 
-        # Build the cascaded models
-        unet_scar = UNet2D(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
-        unet_scar_out = unet_scar.define_architecture(mask_lv_myo, 'sigmoid', out_name='scar_out')
+        unet_l_myo = UNet3DShallow(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
+        unet_l_myo_out = unet_l_myo.define_architecture(masked_l_ht, 'sigmoid', out_name='l_myo_out')
+        unet_l_myo_out_softmax = tf.math.argmax(unet_l_myo_out, axis=-1, output_type=tf.dtypes.int32)
+        unet_l_myo_out_softmax = tf.expand_dims(unet_l_myo_out_softmax, axis=-1)
+        masked_l_myo = tf.where(tf.math.equal(unet_l_myo_out_softmax, 1), model_input, 0)
 
-        unet_pap = UNet2D(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
-        unet_pap_out = unet_pap.define_architecture(mask_lv_lumen, 'sigmoid', out_name='pap_out')
+        unet_l_lumen = UNet3DShallow(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
+        unet_l_lumen_out = unet_l_lumen.define_architecture(masked_l_ht, 'sigmoid', out_name='l_lumen_out')
+        unet_l_lumen_out_softmax = tf.math.argmax(unet_l_lumen_out, axis=-1, output_type=tf.dtypes.int32)
+        unet_l_lumen_out_softmax = tf.expand_dims(unet_l_lumen_out_softmax, axis=-1)
+        masked_l_lumen = tf.where(tf.math.equal(unet_l_lumen_out_softmax, 1), model_input, 0)
 
-        return unet_1_out, unet_scar_out, unet_pap_out
+        # Get right heart segmentations
+        masked_r_ht = tf.where(tf.math.equal(unet_root_out_softmax, 2), model_input, 0)
+        unet_r_lumen_myo = UNet3DShallow(self.input_size, 3, self.kernel_size, self.transpose_kernel_size)
+        unet_r_lumen_myo_out = unet_r_lumen_myo.define_architecture(masked_r_ht, out_name='r_lumen_myo_out')
+
+        # Get scar and papillary muscle segmentations
+        unet_scar = UNet3DShallow(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
+        unet_scar_out = unet_scar.define_architecture(masked_l_myo, 'sigmoid', out_name='scar_out')
+
+        unet_pap = UNet3DShallow(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
+        unet_pap_out = unet_pap.define_architecture(masked_l_lumen, 'sigmoid', out_name='pap_out')
+
+        return unet_root_out, unet_l_myo_out, unet_l_lumen_out, unet_r_lumen_myo_out, unet_scar_out, unet_pap_out

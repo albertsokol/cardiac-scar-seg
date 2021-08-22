@@ -3,7 +3,6 @@ import os
 from abc import ABC
 
 import numpy as np
-from matplotlib import pyplot as plt
 from tensorflow import one_hot
 from tensorflow.keras.utils import Sequence
 
@@ -357,102 +356,7 @@ class Generator3DShallow(Generator2D):
         return np.array(qw, dtype=np.float32)
 
 
-class __CascadedGeneratorB(__Generator, ABC):
-    def __init__(
-        self,
-        model_save_path,
-        generic_data_path,
-        data_path,
-        plane,
-        batch_size,
-        image_size,
-        labels,
-        dataset,
-        shuffle,
-        augmenter,
-        use_cropper,
-        combine_labels,
-        cascade,
-        quality_weighting_scores,
-    ):
-        super().__init__(
-            model_save_path,
-            generic_data_path,
-            data_path,
-            plane,
-            batch_size,
-            image_size,
-            labels,
-            dataset,
-            shuffle,
-            augmenter,
-            use_cropper,
-            combine_labels,
-            cascade,
-            quality_weighting_scores,
-        )
-
-    def get_data(self, batch_indices, weight_mode):
-        # Initialise empty arrays for the training data and labels
-        x = np.empty([self.batch_size, *self.image_size, 1], dtype=np.float32)
-        y_general = np.empty([self.batch_size, *self.image_size, 6], dtype=np.int8)
-        y_scar = np.empty([self.batch_size, *self.image_size, 1], dtype=np.int8)
-        y_pap = np.empty([self.batch_size, *self.image_size, 1], dtype=np.int8)
-
-        if len(self.image_size) == 2:
-            quality_weightings = np.zeros([self.batch_size], dtype=np.float32)
-        else:
-            quality_weightings = np.zeros([self.batch_size, self.image_size[-1]], dtype=np.float32)
-
-        # Get the training data
-        for i, index in enumerate(batch_indices):
-            img, fname = self.read_file(index, self.image_fnames)
-            label, fname = self.read_file(index, self.label_fnames)
-            img = self.reader.normalize(img)
-
-            # Apply data augmentation if option is turned on
-            if self.augmenter and not weight_mode:
-                img, label = self.augmenter.augment(img, label)
-
-            x[i, ...] = self.prepare_img(img, fname)
-            y_general[i, ...], y_scar[i, ...], y_pap[i, ...] = self.prepare_label(label, fname)
-            if self.quality_weighting_scores:
-                quality_weightings[i, ...] = self.get_quality_weightings(fname)
-
-        if self.quality_weighting_scores:
-            return {'model_in': x, 'qw_in': quality_weightings}, {'general_out': y_general, 'scar_out': y_scar, 'pap_out': y_pap, 'qw_out': quality_weightings}
-        else:
-            return x, {'general_out': y_general, 'scar_out': y_scar, 'pap_out': y_pap}
-
-    def prepare_label(self, label, fname):
-        """ Set the label to the correct size and dimensions for placement into the ground truth tensor. """
-        # If cropping, then crop the label here
-        if self.use_cropper:
-            label = self.cropper.crop(label, fname)
-
-        # Resize to the input shape of the model without interpolation
-        if label.shape != self.image_size:
-            label = self.reader.resize(label, self.image_size, interpolation_order=0)
-
-        # Get the one hot label to start with
-        one_hot_label = one_hot(label, len(self.labels), dtype=np.int8).numpy()
-
-        # Get the scar-only and papillary muscle-only labels
-        l_scar = one_hot_label[..., 3]
-        l_pap = one_hot_label[..., 6]
-
-        # The general label should combine the scar into LV myo and papillary muscles into LV lumen
-        l_general = np.empty([*self.image_size, 6])
-        l_general[..., :3] = one_hot_label[..., :3]
-        l_general[..., 3:5] = one_hot_label[..., 4:6]
-        l_general[..., 5] = one_hot_label[..., 7]
-        l_general[..., 2] += l_scar  # Adding scar to myo
-        l_general[..., 1] += l_pap  # Adding pap to lumen
-
-        return l_general, l_scar[..., np.newaxis], l_pap[..., np.newaxis]
-
-
-class CascadedGenerator2DB(__CascadedGeneratorB):
+class CascadedGenerator3DShallowB(__Generator):
     def __init__(
         self,
         model_save_path,
@@ -513,6 +417,67 @@ class CascadedGenerator2DB(__CascadedGeneratorB):
         self.index = np.arange(len(self.image_fnames))
 
         self.reader = NPYReader()
+        if self.quality_weighting_scores:
+            self.resizer = NPYReader()
+
+    def get_data(self, batch_indices, weight_mode):
+        # Initialise empty arrays for the training data and labels
+        x = np.empty([self.batch_size, *self.image_size, 1], dtype=np.float32)
+        y_general = np.empty([self.batch_size, *self.image_size, 6], dtype=np.int8)
+        y_scar = np.empty([self.batch_size, *self.image_size, 1], dtype=np.int8)
+        y_pap = np.empty([self.batch_size, *self.image_size, 1], dtype=np.int8)
+
+        if len(self.image_size) == 2:
+            quality_weightings = np.zeros([self.batch_size], dtype=np.float32)
+        else:
+            quality_weightings = np.zeros([self.batch_size, self.image_size[-1]], dtype=np.float32)
+
+        # Get the training data
+        for i, index in enumerate(batch_indices):
+            img, fname = self.read_file(index, self.image_fnames)
+            label, fname = self.read_file(index, self.label_fnames)
+            img = self.reader.normalize(img)
+
+            # Apply data augmentation if option is turned on
+            if self.augmenter and not weight_mode:
+                img, label = self.augmenter.augment(img, label)
+
+            x[i, ...] = self.prepare_img(img, fname)
+            y_general[i, ...], y_scar[i, ...], y_pap[i, ...] = self.prepare_label(label, fname)
+            if self.quality_weighting_scores:
+                quality_weightings[i, ...] = self.get_quality_weightings(fname)
+
+        if self.quality_weighting_scores:
+            return {'model_in': x, 'qw_in': quality_weightings}, {'general_out': y_general, 'scar_out': y_scar, 'pap_out': y_pap, 'qw_out': quality_weightings}
+        else:
+            return x, {'general_out': y_general, 'scar_out': y_scar, 'pap_out': y_pap}
+
+    def prepare_label(self, label, fname):
+        """ Set the label to the correct size and dimensions for placement into the ground truth tensor. """
+        # If cropping, then crop the label here
+        if self.use_cropper:
+            label = self.cropper.crop(label, fname)
+
+        # Resize to the input shape of the model without interpolation
+        if label.shape != self.image_size:
+            label = self.reader.resize(label, self.image_size, interpolation_order=0)
+
+        # Get the one hot label to start with
+        one_hot_label = one_hot(label, len(self.labels), dtype=np.int8).numpy()
+
+        # Get the scar-only and papillary muscle-only labels
+        l_scar = one_hot_label[..., 3]
+        l_pap = one_hot_label[..., 6]
+
+        # The general label should combine the scar into LV myo and papillary muscles into LV lumen
+        l_general = np.empty([*self.image_size, 6])
+        l_general[..., :3] = one_hot_label[..., :3]
+        l_general[..., 3:5] = one_hot_label[..., 4:6]
+        l_general[..., 5] = one_hot_label[..., 7]
+        l_general[..., 2] += l_scar  # Adding scar to myo
+        l_general[..., 1] += l_pap  # Adding pap to lumen
+
+        return l_general, l_scar[..., np.newaxis], l_pap[..., np.newaxis]
 
     def get_quality_weightings(self, fname):
         """Get the quality weights for the current image slice."""
@@ -520,26 +485,30 @@ class CascadedGenerator2DB(__CascadedGeneratorB):
         curr_root = curr_label.split('_')[1]
         curr_slice = int(curr_label.split('_')[2])
 
-        return self.quality_weighting_scores[str(self.quality_weightings_dict[curr_root][curr_slice])]
+        qw = []
+        for i in range(curr_slice, curr_slice + self.slice_depth):
+            qw += [self.quality_weighting_scores[str(self.quality_weightings_dict[curr_root][i])]]
+
+        return np.array(qw, dtype=np.float32)
 
 
-class CascadedGenerator3DB(__CascadedGeneratorB):
+class CascadedGenerator3DShallowC(CascadedGenerator3DShallowB):
     def __init__(
-        self,
-        model_save_path,
-        generic_data_path,
-        data_path,
-        plane,
-        batch_size,
-        image_size,
-        labels,
-        dataset,
-        shuffle=True,
-        augmenter=None,
-        use_cropper=False,
-        combine_labels=None,
-        cascade=None,
-        quality_weighting_scores=None,
+            self,
+            model_save_path,
+            generic_data_path,
+            data_path,
+            plane,
+            batch_size,
+            image_size,
+            labels,
+            dataset,
+            shuffle=True,
+            augmenter=None,
+            use_cropper=False,
+            combine_labels=None,
+            cascade=None,
+            quality_weighting_scores=None,
     ):
         super().__init__(
             model_save_path,
@@ -557,28 +526,69 @@ class CascadedGenerator3DB(__CascadedGeneratorB):
             cascade,
             quality_weighting_scores,
         )
-        # TODO: if cascade -> need to use fnames from the mask folder instead - test this
-        if cascade:
-            self.reader = NPYReader()
-            self.image_fnames = [
-                os.path.join(model_save_path, 'mask', dataset, f'{x}_SAX.nii.gz')
-                for x in sorted(os.listdir(os.path.join(model_save_path, 'mask', dataset)))
-            ]
-        else:
-            self.reader = NIIReader()
-        if self.quality_weighting_scores:
-            self.resizer = NPYReader()
 
-    def get_quality_weightings(self, fname):
-        """Get the quality weights for the current image - full or sliced."""
-        curr_label = fname.split('/')[-1]
-        curr_root = curr_label.split('_')[1]
+    def get_data(self, batch_indices, weight_mode):
+        # Initialise empty arrays for the training data and labels
+        x = np.empty([self.batch_size, *self.image_size, 1], dtype=np.float32)
+        y_general = np.empty([self.batch_size, *self.image_size, 4], dtype=np.int8)
+        y_l_lumen = np.empty([self.batch_size, *self.image_size, 1], dtype=np.int8)
+        y_l_myo = np.empty([self.batch_size, *self.image_size, 1], dtype=np.int8)
+        y_r_lumen_myo = np.empty([self.batch_size, *self.image_size, 3], dtype=np.int8)
+        y_scar = np.empty([self.batch_size, *self.image_size, 1], dtype=np.int8)
+        y_pap = np.empty([self.batch_size, *self.image_size, 1], dtype=np.int8)
 
-        # Get the quality weighting scores
-        qw = np.array([self.quality_weighting_scores[str(x)] for x in self.quality_weightings_dict[curr_root]], dtype=np.float32)
+        # Get the training data
+        for i, index in enumerate(batch_indices):
+            img, fname = self.read_file(index, self.image_fnames)
+            label, fname = self.read_file(index, self.label_fnames)
+            img = self.reader.normalize(img)
 
-        # If the shape is not the same as the model depth, need to resize without interpolating
-        if qw.shape[0] != self.image_size[-1]:
-            qw = self.resizer.resize(qw, [self.image_size[-1]], interpolation_order=0)
+            # Apply data augmentation if option is turned on
+            if self.augmenter and not weight_mode:
+                img, label = self.augmenter.augment(img, label)
 
-        return qw
+            x[i, ...] = self.prepare_img(img, fname)
+            y_general[i, ...], y_l_lumen[i, ...], y_l_myo[i, ...], y_r_lumen_myo[i, ...], y_scar[i, ...], y_pap[i, ...] = self.prepare_label(label, fname)
+
+        return x, {
+            'general_out': y_general,
+            'l_lumen_out': y_l_lumen,
+            'l_myo_out': y_l_myo,
+            'r_lumen_myo_out': y_r_lumen_myo,
+            'scar_out': y_scar,
+            'pap_out': y_pap,
+        }
+
+    def prepare_label(self, label, fname):
+        """ Set the label to the correct size and dimensions for placement into the ground truth tensor. """
+        # If cropping, then crop the label here
+        if self.use_cropper:
+            label = self.cropper.crop(label, fname)
+
+        # Resize to the input shape of the model without interpolation
+        if label.shape != self.image_size:
+            label = self.reader.resize(label, self.image_size, interpolation_order=0)
+
+        # Get the one hot label to start with
+        one_hot_label = one_hot(label, len(self.labels), dtype=np.int8).numpy()
+
+        # The general label should combine the scar, l myo, l lumen and pap, and also r lumen and r myo
+        l_general = np.zeros([*self.image_size, 4])
+        l_general[..., 0] = one_hot_label[..., 0]
+        l_general[..., 1] = one_hot_label[..., 1] + one_hot_label[..., 2] + one_hot_label[..., 3] + one_hot_label[..., 6]
+        l_general[..., 2] = one_hot_label[..., 4] + one_hot_label[..., 5]
+        l_general[..., 3] = one_hot_label[..., 7]
+
+        l_lumen = one_hot_label[..., 1] + one_hot_label[..., 6]
+        l_myo = one_hot_label[..., 2] + one_hot_label[..., 3]
+
+        r_lumen_myo = np.zeros([*self.image_size, 3])
+        r_lumen_myo[..., 0] = one_hot_label[..., 0] + one_hot_label[..., 1] + one_hot_label[..., 2] + \
+                              one_hot_label[..., 3] + one_hot_label[..., 6] + one_hot_label[..., 7]
+        r_lumen_myo[..., 1] = one_hot_label[..., 4]  # rv lumen is at index 1 of r_lumen_myo_out
+        r_lumen_myo[..., 2] = one_hot_label[..., 5]  # rv myo is at index 2 of r_lumen_myo_out
+
+        scar = one_hot_label[..., 3]
+        pap = one_hot_label[..., 6]
+
+        return l_general, l_lumen[..., np.newaxis], l_myo[..., np.newaxis], r_lumen_myo, scar[..., np.newaxis], pap[..., np.newaxis]

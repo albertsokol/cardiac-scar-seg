@@ -220,8 +220,8 @@ class Augmenter3D(__Augmenter):
         """ Simultaneously augment the image and label together. Both must be numpy arrays. """
         assert type(img) == np.ndarray, f'Image must be a numpy array but type {type(img)} was given'
         assert type(label) == np.ndarray, f'Label must be a numpy array but type {type(label)} was given'
-        assert np.max(
-            img) == 1., f'Image must be normalized before augmentation, but max value was not 1. - got {np.max(img)}'
+        assert np.max(img) == 1. or np.max(img) == 0., \
+            f'Image must be normalized before augmentation, but max value was not 1. - got {np.max(img)}'
         assert np.min(
             img) == 0., f'Image must be normalized before augmentation, but min value was not 0. - got {np.min(img)}'
 

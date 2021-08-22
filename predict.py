@@ -1,8 +1,10 @@
 import json
 import os
-import tensorflow as tf
-import numpy as np
 import random
+
+import cv2
+import numpy as np
+import tensorflow as tf
 from scipy.special import softmax
 
 from cropper import Cropper
@@ -22,10 +24,10 @@ def load_predictor(predict_config):
             p = Predictor3D(**predict_config, train_config=train_config)
         elif train_config['model'] in ['UNet3DShallow', 'VNetShallow']:
             p = Predictor3DShallow(**predict_config, train_config=train_config)
-        elif train_config['model'] in ['CascadedUNet2DB']:
-            p = Predictor2DCascadedB(**predict_config, train_config=train_config)
-        elif train_config['model'] in ['CascadedUNet3DB']:
-            p = Predictor3DCascadedB(**predict_config, train_config=train_config)
+        elif train_config['model'] in ['CascadedUNet3DShallowB']:
+            p = Predictor3DCascadedShallowB(**predict_config, train_config=train_config)
+        elif train_config['model'] in ['CascadedUNet3DShallowC']:
+            p = Predictor3DCascadedShallowC(**predict_config, train_config=train_config)
         else:
             p = Predictor2D(**predict_config, train_config=train_config)
     elif isinstance(predict_config['model_path'], list):
@@ -38,8 +40,15 @@ def load_predictor(predict_config):
 
 
 class __Predictor:
-    def __init__(self, data_path, dataset, train_config):
+    def __init__(self, data_path, dataset, train_config, post_process):
         self.rng = np.random.default_rng()
+
+        if post_process:
+            assert post_process in ["erosion dilation", "dae"], "post_process must either be false of one of: " \
+                                                                "'erosion dilation', 'dae'"
+        else:
+            assert isinstance(post_process, bool), "post_process must be the false bool if not in use"
+        self.post_process = post_process
 
         self.model_path = train_config['model_save_path']
         self.model_name = train_config['model']
@@ -95,16 +104,21 @@ class __Predictor:
 
         return np.argmax(out, axis=-1)
 
-    def get_one_hot(self, y_true, y_pred):
+    def get_one_hot(self, y_true, y_pred=None):
         """Get one-hot encoding representations of labels and predictions."""
         if self.combine_labels:
             y_true = tf.one_hot(y_true, len(self.combine_labels), dtype=np.int8).numpy()
-            y_pred = tf.one_hot(y_pred, len(self.combine_labels), dtype=np.int8).numpy()
+            if y_pred is not None:
+                y_pred = tf.one_hot(y_pred, len(self.combine_labels), dtype=np.int8).numpy()
         else:
             y_true = tf.one_hot(y_true, len(self.labels_dict), dtype=np.int8).numpy()
-            y_pred = tf.one_hot(y_pred, len(self.labels_dict), dtype=np.int8).numpy()
+            if y_pred is not None:
+                y_pred = tf.one_hot(y_pred, len(self.labels_dict), dtype=np.int8).numpy()
 
-        return y_true, y_pred
+        if y_pred is None:
+            return y_true
+        else:
+            return y_true, y_pred
 
     def calculate_dice(self, y_true, y_pred):
         """Computes dice coefficient between gt and predicted segmentations using numpy."""
@@ -131,6 +145,41 @@ class __Predictor:
 
     def predict(self, fname=None, display=False, apply_combine=True, return_fname=False):
         raise NotImplementedError
+
+    def post_process_erosion_dilation(self, pred_label, kernel_size=2):
+        """Perform slice-wise erosion-dilation based smoothing and noise reduction of the given predicted label."""
+        kernel = np.ones([kernel_size, kernel_size], dtype=np.int8)
+        out = np.empty(pred_label.shape, dtype=np.int8)
+
+        for i in range(pred_label.shape[-1]):
+            curr = pred_label[..., i].astype(np.uint8)
+
+            # Convert to one-hot encoding to allow label-wise erosion dilation
+            curr = self.get_one_hot(curr).astype(np.uint8)
+
+            for j in range(curr.shape[-1]):
+                # Skip the first label as this will simply be background
+                if j == 0:
+                    continue
+
+                # Erode and dilate the predicted areas using the kernel to get rid of noise smaller than kernel_size
+                curr[..., j] = cv2.erode(curr[..., j], kernel, iterations=1)
+                curr[..., j] = cv2.dilate(curr[..., j], kernel, iterations=1)
+
+            # argmax will automatically set to 0 if all values are 0
+            curr = np.argmax(curr, axis=-1)
+            out[..., i] = curr
+
+        return out
+
+    def post_process_label(self, pred_label):
+        """Route to the correct post-processing function and return the updated predicted label."""
+        if self.post_process == "erosion dilation":
+            pred_label = self.post_process_erosion_dilation(pred_label)
+        elif self.post_process == "dae":
+            pred_label = self.post_process_dae(pred_label)
+
+        return pred_label
 
     def display(self, image, label, pred_label, plane='transverse'):
         """
@@ -203,8 +252,8 @@ class __Predictor:
 
 
 class Predictor3D(__Predictor):
-    def __init__(self, data_path, dataset, model_path, train_config):
-        super().__init__(data_path, dataset, train_config)
+    def __init__(self, data_path, dataset, model_path, train_config, post_process):
+        super().__init__(data_path, dataset, train_config, post_process)
         self.full_data_path = os.path.join(data_path, '3D', self.dataset)
 
         self.reader = NIIReader() if not self.cascade else NPYReader()
@@ -245,6 +294,9 @@ class Predictor3D(__Predictor):
         if self.combine_labels and apply_combine:
             label = self.apply_label_combine(label)
 
+        if self.post_process:
+            pred_label = self.post_process_label(pred_label)
+
         if display:
             print(self.calculate_dice(label, pred_label))
             self.display(image, label, pred_label)
@@ -256,8 +308,8 @@ class Predictor3D(__Predictor):
 
 
 class Predictor2D(__Predictor):
-    def __init__(self, data_path, dataset, model_path, train_config):
-        super().__init__(data_path, dataset, train_config)
+    def __init__(self, data_path, dataset, model_path, train_config, post_process):
+        super().__init__(data_path, dataset, train_config, post_process)
         self.full_data_path = os.path.join(data_path, '2D', self.dataset, train_config["plane"])
 
         self.reader = NPYReader()
@@ -312,6 +364,9 @@ class Predictor2D(__Predictor):
         if self.combine_labels and apply_combine:
             label = self.apply_label_combine(label)
 
+        if self.post_process:
+            pred_label = self.post_process_label(pred_label)
+
         if display:
             print(self.calculate_dice(label, pred_label))
             self.display(image, label, pred_label)
@@ -350,8 +405,8 @@ class Predictor2D(__Predictor):
 
 
 class Predictor3DShallow(__Predictor):
-    def __init__(self, data_path, dataset, model_path, train_config):
-        super().__init__(data_path, dataset, train_config)
+    def __init__(self, data_path, dataset, model_path, train_config, post_process):
+        super().__init__(data_path, dataset, train_config, post_process)
         self.full_data_path = os.path.join(data_path, '3DShallow', self.dataset, train_config["plane"])
 
         self.reader = NPYReader()
@@ -438,7 +493,12 @@ class Predictor3DShallow(__Predictor):
             curr_logits /= float(len(curr_slices))
 
             # Apply softmax and argmax to the logits to get the predicted labels for the current slice
-            pred_label[..., i] = np.argmax(softmax(curr_logits, axis=-1), axis=-1)
+            if curr_logits.shape[-1] == 1:
+                # Sigmoid (binary case) - just use z > 0 since don't need sigmoid function for prediction
+                pred_label[..., i] = np.where(np.greater_equal(curr_logits[..., 0], 0), 1, 0)
+            else:
+                # Softmax
+                pred_label[..., i] = np.argmax(softmax(curr_logits, axis=-1), axis=-1)
 
         return pred_label
 
@@ -455,7 +515,7 @@ class Predictor3DShallow(__Predictor):
 
         for image in images:
             if self.quality_weighted_mode:
-                curr_pred = pred_model.predict((image[np.newaxis, ...], np.array([1.], dtype=np.float32)))
+                curr_pred = pred_model.predict((image[np.newaxis, ...], np.array([self.image_size[-1]], dtype=np.float32)))
             else:
                 curr_pred = pred_model.predict(image[np.newaxis, ...])
             pred_logits += [np.squeeze(curr_pred)]
@@ -467,6 +527,9 @@ class Predictor3DShallow(__Predictor):
 
         if self.combine_labels and apply_combine:
             label = self.apply_label_combine(label)
+
+        if self.post_process:
+            pred_label = self.post_process_label(pred_label)
 
         if display:
             print(self.calculate_dice(label, pred_label))
@@ -505,13 +568,15 @@ class PredictorStaggeredCascaded:
     Builds a generic tree structure to define execution order of models and determine which models are responsible
     for each output label automatically.
     """
-    def __init__(self, data_path, dataset, model_path):
+    def __init__(self, data_path, dataset, model_path, post_process):
         self.data_path = data_path
         self.dataset = dataset
         self.model_paths = model_path
+        self.post_process = post_process
         self.tree = None
         self.node_map = {}
         self.label_map = {}
+        self.model_cache = {}
 
         with open(os.path.join(self.model_paths[0], 'train_config.json'), 'r') as f:
             init_config = json.load(f)
@@ -588,16 +653,19 @@ class PredictorStaggeredCascaded:
             node = queue.pop(0)
 
             # Run predictions with node, which will be root tree on first iter
-            p = load_predictor({
-                'model_path': node.model_path,
-                'data_path': self.data_path,
-                'dataset': self.dataset,
-            })
+            if node not in self.model_cache:
+                # Load models into the cache to prevent re-loading on every predicted image
+                self.model_cache[node] = load_predictor({
+                    'model_path': node.model_path,
+                    'data_path': self.data_path,
+                    'dataset': self.dataset,
+                    'post_process': self.post_process
+                })
 
             if fname is None:
-                image, label, curr_pred, fname = p.predict(fname, display=False, apply_combine=False, return_fname=True)
+                image, label, curr_pred, fname = self.model_cache[node].predict(fname, display=False, apply_combine=False, return_fname=True)
             else:
-                image, label, curr_pred = p.predict(fname, display=False, apply_combine=False, return_fname=False)
+                image, label, curr_pred = self.model_cache[node].predict(fname, display=False, apply_combine=False, return_fname=False)
 
             if pred_label is None:
                 pred_label = np.zeros([*curr_pred.shape], dtype=np.int8)
@@ -609,8 +677,8 @@ class PredictorStaggeredCascaded:
                 queue += node.children
 
         if display:
-            p.calculate_dice(label, pred_label)
-            p.display(image, label, pred_label)
+            self.model_cache[node].calculate_dice(label, pred_label)
+            self.model_cache[node].display(image, label, pred_label)
 
         return image, label, pred_label
 
@@ -656,9 +724,6 @@ class PredictorStaggeredCascaded:
             self.node_map[k]['node'].outputs += [k]
             self.node_map[k]['node'].output_idx += [i for i, x in enumerate(self.node_map[k]['node'].combine_labels) if k in x]
 
-        # print(tree)
-        # print(self.node_map)
-
     def predict(self, fname=None, display=False):
         if self.tree is None:
             self.tree = self.construct_tree()
@@ -666,28 +731,54 @@ class PredictorStaggeredCascaded:
 
         image, label, pred_label = self.bfs_run(self.tree, fname, display)
 
+        if self.post_process:
+            pred_label = self.post_process_label(pred_label)
+
         return image, label, pred_label
 
 
-class Predictor3DCascadedB(Predictor3D):
-    def __init__(self, data_path, dataset, model_path, train_config):
-        super().__init__(data_path, dataset, model_path, train_config)
+class Predictor3DCascadedShallowB(Predictor3DShallow):
+    def __init__(self, data_path, dataset, model_path, train_config, post_process):
+        super().__init__(data_path, dataset, model_path, train_config, post_process)
 
     def predict(self, fname=None, display=False, apply_combine=True, return_fname=False):
-        image, label, fname = self.load_image_label(fname)
+        images, labels, fname = self.load_image_label(fname)
+        image = self.construct_slice_wise(images, len(images), self.image_size[-1])
+        label = self.construct_slice_wise(labels, len(images), self.image_size[-1])
+
         # Get the multiple outputs from the model
-        predictions = self.model.predict(image)
+        pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=[
+            self.model.get_layer("conv3d_14").output,
+            self.model.get_layer("conv3d_29").output,
+            self.model.get_layer("conv3d_44").output,
+        ])
 
-        # Convert to the correct dimensionality and shift along to take all 8 values
-        general = np.squeeze(np.argmax(predictions[0], axis=-1))
-        general = np.where(np.greater_equal(general, 3), general + 1, general)
-        pred_label = np.where(np.equal(general, 6), 7, general)
+        pred_logits_root = []
+        pred_logits_scar = []
+        pred_logits_pap = []
 
-        # Add in scar predictions
-        pred_label = np.where(np.greater_equal(np.squeeze(predictions[1]), 0.5), 3, pred_label)
+        for x in images:
+            predictions = pred_model.predict(x[np.newaxis, ...])
 
-        # And add in papillary muscle predictions
-        pred_label = np.where(np.greater_equal(np.squeeze(predictions[2]), 0.5), 6, pred_label)
+            pred_logits_root += [np.squeeze(predictions[0], axis=0)]
+            pred_logits_scar += [np.squeeze(predictions[1], axis=0)]
+            pred_logits_pap += [np.squeeze(predictions[2], axis=0)]
+
+        pred_label_root = self.aggregate_slice_logits(pred_logits_root, len(images), self.image_size[-1])
+        pred_label_scar = self.aggregate_slice_logits(pred_logits_scar, len(images), self.image_size[-1])
+        pred_label_pap = self.aggregate_slice_logits(pred_logits_pap, len(images), self.image_size[-1])
+
+        pred_label = np.zeros(pred_label_root.shape)
+        pred_label = np.where(np.equal(pred_label_root, 1), 1, pred_label)  # l lumen
+        pred_label = np.where(np.equal(pred_label_root, 2), 2, pred_label)  # l myo
+        pred_label = np.where(np.equal(pred_label_root, 3), 4, pred_label)  # r lumen
+        pred_label = np.where(np.equal(pred_label_root, 4), 5, pred_label)  # r lumen
+        pred_label = np.where(np.equal(pred_label_root, 5), 7, pred_label)  # aorta
+        pred_label = np.where(np.equal(pred_label_scar, 1), 3, pred_label)  # scar
+        pred_label = np.where(np.equal(pred_label_pap, 1), 6, pred_label)  # pap
+
+        if self.post_process:
+            pred_label = self.post_process_label(pred_label)
 
         if display:
             print(self.calculate_dice(label, pred_label))
@@ -696,34 +787,60 @@ class Predictor3DCascadedB(Predictor3D):
         return image, label, pred_label
 
 
-class Predictor2DCascadedB(Predictor2D):
-    def __init__(self, data_path, dataset, model_path, train_config):
-        super().__init__(data_path, dataset, model_path, train_config)
+class Predictor3DCascadedShallowC(Predictor3DShallow):
+    def __init__(self, data_path, dataset, model_path, train_config, post_process):
+        super().__init__(data_path, dataset, model_path, train_config, post_process)
 
     def predict(self, fname=None, display=False, apply_combine=True, return_fname=False):
         images, labels, fname = self.load_image_label(fname)
-        pred_label = np.empty(images.shape[:-1], dtype=np.int8)
+        image = self.construct_slice_wise(images, len(images), self.image_size[-1])
+        label = self.construct_slice_wise(labels, len(images), self.image_size[-1])
 
-        for i in range(images.shape[0]):
-            if self.quality_weighted_mode:
-                # Get the prediction on the current image with dummy quality weighting - pred is index 1
-                predictions = self.model.predict((images[i, np.newaxis, ...], np.array([1.], dtype=np.float32)))[1:]
-            else:
-                predictions = self.model.predict(images[i, np.newaxis, ...])
+        # Get the multiple outputs from the model
+        pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=[
+            self.model.get_layer("conv3d_14").output,  # root out
+            self.model.get_layer("conv3d_29").output,  # l myo out
+            self.model.get_layer("conv3d_44").output,  # l lumen out
+            self.model.get_layer("conv3d_59").output,  # r lumen myo out
+            self.model.get_layer("conv3d_74").output,  # scar out
+            self.model.get_layer("conv3d_89").output,  # pap out
+        ])
 
-            # Convert to the correct dimensionality and shift along to take all 8 values
-            general = np.squeeze(np.argmax(predictions[0], axis=-1))
-            general = np.where(np.greater_equal(general, 3), general + 1, general)
-            curr_gen = np.where(np.equal(general, 6), 7, general)
-            pred_label[i, ...] = curr_gen
-            # Add in scar and papillary muscle predictions
-            pred_label[i, ...] = np.where(np.greater_equal(np.squeeze(predictions[1]), 0.5), 3, pred_label[i, ...])
-            pred_label[i, ...] = np.where(np.greater_equal(np.squeeze(predictions[2]), 0.5), 6, pred_label[i, ...])
+        pred_logits_root = []
+        pred_logits_l_myo = []
+        pred_logits_l_lumen = []
+        pred_logits_r_lumen_myo = []
+        pred_logits_scar = []
+        pred_logits_pap = []
 
-        # Shift axes
-        image = np.moveaxis(np.squeeze(images), [0, 1, 2], [2, 0, 1])
-        label = np.moveaxis(labels, [0, 1, 2], [2, 0, 1])
-        pred_label = np.moveaxis(pred_label, [0, 1, 2], [2, 0, 1])
+        for x in images:
+            predictions = pred_model.predict(x[np.newaxis, ...])
+
+            pred_logits_root += [np.squeeze(predictions[0], axis=0)]
+            pred_logits_l_myo += [np.squeeze(predictions[1], axis=0)]
+            pred_logits_l_lumen += [np.squeeze(predictions[2], axis=0)]
+            pred_logits_r_lumen_myo += [np.squeeze(predictions[3], axis=0)]
+            pred_logits_scar += [np.squeeze(predictions[4], axis=0)]
+            pred_logits_pap += [np.squeeze(predictions[5], axis=0)]
+
+        pred_label_root = self.aggregate_slice_logits(pred_logits_root, len(images), self.image_size[-1])
+        pred_label_l_myo = self.aggregate_slice_logits(pred_logits_l_myo, len(images), self.image_size[-1])
+        pred_label_l_lumen = self.aggregate_slice_logits(pred_logits_l_lumen, len(images), self.image_size[-1])
+        pred_label_r_lumen_myo = self.aggregate_slice_logits(pred_logits_r_lumen_myo, len(images), self.image_size[-1])
+        pred_label_scar = self.aggregate_slice_logits(pred_logits_scar, len(images), self.image_size[-1])
+        pred_label_pap = self.aggregate_slice_logits(pred_logits_pap, len(images), self.image_size[-1])
+
+        pred_label = np.zeros(pred_label_root.shape)
+        pred_label = np.where(np.equal(pred_label_root, 3), 7, pred_label)  # aorta
+        pred_label = np.where(np.equal(pred_label_l_myo, 1), 2, pred_label)  # l myo
+        pred_label = np.where(np.equal(pred_label_l_lumen, 1), 1, pred_label)  # l myo
+        pred_label = np.where(np.equal(pred_label_r_lumen_myo, 1), 4, pred_label)  # r lumen
+        pred_label = np.where(np.equal(pred_label_r_lumen_myo, 2), 5, pred_label)  # r myo
+        pred_label = np.where(np.equal(pred_label_scar, 1), 3, pred_label)  # scar
+        pred_label = np.where(np.equal(pred_label_pap, 1), 6, pred_label)  # pap
+
+        if self.post_process:
+            pred_label = self.post_process_label(pred_label)
 
         if display:
             print(self.calculate_dice(label, pred_label))

@@ -12,6 +12,8 @@ from util import PColour
 
 
 if __name__ == '__main__':
+    start = time.time()
+
     # Load the configs
     with open('predict_config.json', 'r') as predict_config_file:
         predict_config = json.load(predict_config_file)
@@ -20,14 +22,11 @@ if __name__ == '__main__':
     p = load_predictor(predict_config)
     plane = p.plane
 
-    if p.model_name in ['UNet3D']:
+    if p.model_name in ['UNet3D', 'VNet']:
         dims = '3D'
         plane = ''
-    elif p.model_name in ['UNet3DShallow']:
+    elif p.model_name in ['UNet3DShallow', 'VNetShallow', 'CascadedUNet3DShallowB', 'CascadedUNet3DShallowC']:
         dims = '3DShallow'
-    elif p.model_name in ['CascadedUNet3D']:
-        dims = '3D'
-        plane = ''
     else:
         dims = '2D'
 
@@ -42,7 +41,6 @@ if __name__ == '__main__':
     else:
         class_wise_dices = np.zeros([len(p.labels_dict)])
 
-    start = time.time()
     # Run the model in predictions mode and get the dice scores for each scan
     for root in tqdm(roots):
         image, label, pred_label = p.predict(fname=root, display=False)

@@ -161,7 +161,7 @@ class WeightedSoftmaxDiceLossPlusQuality(__Loss):
         return K.sum(ele_wise_loss)
 
 
-class CascadedWeightedSoftmaxDiceLoss(__Loss):
+class CascadedWeightedSoftmaxDiceLossB(__Loss):
     def __init__(self, batch_size, image_size, label_weights, dice_weight=0.5):
         super().__init__(batch_size, image_size)
         self.label_weights = label_weights
@@ -171,15 +171,58 @@ class CascadedWeightedSoftmaxDiceLoss(__Loss):
         y_true, y_pred = args[0], args[1]
 
         # First, get the softmax loss
-        if "general" in args[1].model_path:
+        if "general" in args[1].name:
             curr_weights = self.label_weights["general"]
             softmax_loss = - K.sum(curr_weights * y_true * K.log(self.clip(y_pred)))
         else:
-            if "scar" in args[1].model_path:
+            if "scar" in args[1].name:
                 curr_weights = self.label_weights["scar"]
             else:
                 curr_weights = self.label_weights["pap"]
             softmax_loss = 4. * curr_weights * tf.keras.metrics.binary_crossentropy(y_true, y_pred)
+
+        softmax_loss = softmax_loss / self.num_vox / self.batch_size
+
+        # Then, get the Dice loss
+        numerator = 2 * K.sum(y_true * y_pred) + 1e-7
+        denominator = K.sum(y_true) + K.sum(y_pred) + 1e-7
+        dice_coefficient = numerator / denominator
+        dice_loss = 1 - dice_coefficient
+
+        # Finally, combine the two
+        return self.dice_weight * dice_loss + softmax_loss
+
+
+class CascadedWeightedSoftmaxDiceLossC(__Loss):
+    def __init__(self, batch_size, image_size, label_weights, dice_weight=0.5):
+        super().__init__(batch_size, image_size)
+        self.label_weights = label_weights
+        self.dice_weight = dice_weight
+
+    def call(self, *args, **kwargs):
+        y_true, y_pred = args[0], args[1]
+
+        # First, get the softmax loss
+        if "general" in args[1].name:
+            curr_weights = self.label_weights["general"]
+            softmax_loss = - K.sum(curr_weights * y_true * K.log(self.clip(y_pred)))
+        elif "r_lumen_myo" in args[1].name:
+            curr_weights = self.label_weights["r_lumen_myo"]
+            softmax_loss = - K.sum(curr_weights * y_true * K.log(self.clip(y_pred)))
+        else:
+            multiplier = 1.
+            if "l_lumen" in args[1].name:
+                curr_weights = self.label_weights["l_lumen"]
+            elif "l_myo" in args[1].name:
+                curr_weights = self.label_weights["l_myo"]
+            elif "scar" in args[1].name:
+                curr_weights = self.label_weights["scar"]
+                multiplier = 4.
+            else:
+                curr_weights = self.label_weights["pap"]
+                multiplier = 4.
+
+            softmax_loss = multiplier * curr_weights * tf.keras.metrics.binary_crossentropy(y_true, y_pred)
 
         softmax_loss = softmax_loss / self.num_vox / self.batch_size
 

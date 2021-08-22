@@ -92,6 +92,7 @@ class Masker:
             'model_path': self.model_path,
             'data_path': self.data_path,
             'dataset': self.dataset,
+            'post_process': False,
         }
 
         # Load the masking model as a Predictor object

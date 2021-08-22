@@ -10,17 +10,24 @@ from tensorflow.keras.utils import plot_model
 
 from augmenter import Augmenter2D, Augmenter3D
 from callbacks import LearningRatePrinter
-from generators import Generator2D, Generator3DShallow, Generator3D, CascadedGenerator2DB, CascadedGenerator3DB
+from generators import (
+    Generator2D,
+    Generator3DShallow,
+    Generator3D,
+    CascadedGenerator3DShallowB,
+    CascadedGenerator3DShallowC,
+)
 from losses import (
     SoftmaxLoss,
     WeightedSoftmaxLoss,
     DiceLoss,
     WeightedSoftmaxDiceLoss,
-    CascadedWeightedSoftmaxDiceLoss,
-    WeightedSoftmaxDiceLossPlusQuality
+    CascadedWeightedSoftmaxDiceLossB,
+    CascadedWeightedSoftmaxDiceLossC,
+    WeightedSoftmaxDiceLossPlusQuality,
 )
 from metrics import DiceMetric, ClassWiseDiceMetric
-from models import UNet2D, UNet3DShallow, UNet3D, CascadedUNet2DB, CascadedUNet3DB, VNet, VNetShallow
+from models import UNet2D, UNet3DShallow, UNet3D, CascadedUNet3DShallowB, CascadedUNet3DShallowC, VNet, VNetShallow
 from util import PColour
 
 
@@ -67,17 +74,14 @@ class Trainer:
             self.augmenter = Augmenter3D(**augmentation)
             assert plane in ["transverse", "sagittal",
                              "coronal"], "Plane must be one of: 'transverse', 'sagittal', 'coronal'"
-        elif model in ['CascadedUNet3DB']:
-            self.dimensionality = '3DCascadedB'
-            self.data_root = '3D'
+        elif model in ['CascadedUNet3DShallowB']:
+            self.dimensionality = '3DShallowCascadedB'
+            self.data_root = '3DShallow'
             self.augmenter = Augmenter3D(**augmentation)
-            plane = ""
-        elif model in ['CascadedUNet2DB']:
-            self.dimensionality = '2DCascadedB'
-            self.data_root = '2D'
-            self.augmenter = Augmenter2D(**augmentation)
-            assert plane in ["transverse", "sagittal",
-                             "coronal"], "Plane must be one of: 'transverse', 'sagittal', 'coronal'"
+        elif model in ['CascadedUNet3DShallowC']:
+            self.dimensionality = '3DShallowCascadedC'
+            self.data_root = '3DShallow'
+            self.augmenter = Augmenter3D(**augmentation)
         else:
             self.dimensionality = '2D'
             self.data_root = '2D'
@@ -94,8 +98,8 @@ class Trainer:
             "UNet3D": UNet3D,
             "UNet3DShallow": UNet3DShallow,
             "UNet2D": UNet2D,
-            "CascadedUNet3DB": CascadedUNet3DB,
-            "CascadedUNet2DB": CascadedUNet2DB,
+            "CascadedUNet3DShallowB": CascadedUNet3DShallowB,
+            "CascadedUNet3DShallowC": CascadedUNet3DShallowC,
             "VNet": VNet,
             "VNetShallow": VNetShallow,
         }
@@ -103,8 +107,8 @@ class Trainer:
             "3D": Generator3D,
             "3DShallow": Generator3DShallow,
             "2D": Generator2D,
-            "2DCascadedB": CascadedGenerator2DB,
-            "3DCascadedB": CascadedGenerator3DB,
+            "3DShallowCascadedB": CascadedGenerator3DShallowB,
+            "3DShallowCascadedC": CascadedGenerator3DShallowC,
         }
 
         assert not (warmup and lr_decay), "currently warmup and lr_decay cannot be used simultaneously"
@@ -126,7 +130,7 @@ class Trainer:
         self.callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
                 self.model_save_path,
-                monitor=monitor if model not in ['CascadedUNet3DB', 'CascadedUNet2DB'] else 'val_general_out_dice',
+                monitor=monitor if model not in ['CascadedUNet3DShallowB', 'CascadedUNet3DShallowC'] else 'val_general_out_dice',
                 save_best_only=True,
                 verbose=1,
                 mode='max',
@@ -139,8 +143,17 @@ class Trainer:
             'dice': DiceLoss,
             'weighted softmax dice': WeightedSoftmaxDiceLoss,
             'quality weighted softmax dice': WeightedSoftmaxDiceLossPlusQuality,
-            'cascaded weighted softmax dice': CascadedWeightedSoftmaxDiceLoss,
+            'cascaded weighted softmax dice b': CascadedWeightedSoftmaxDiceLossB,
+            'cascaded weighted softmax dice c': CascadedWeightedSoftmaxDiceLossC,
         }
+
+        if model == "CascadedUNet3DShallowB" and loss_fn != "cascaded weighted softmax dice b":
+            print("Switching loss fn to 'cascaded weighted softmax dice b' since Cascaded B setup was used ... ")
+            loss_fn = "cascaded weighted softmax dice b"
+        if model == "CascadedUNet3DShallowC" and loss_fn != "cascaded weighted softmax dice c":
+            print("Switching loss fn to 'cascaded weighted softmax dice c' since Cascaded C setup was used ... ")
+            loss_fn = "cascaded weighted softmax dice c"
+
         assert loss_fn in loss_dict, f'loss function {loss_fn}, not recognised, please pick one of: {loss_dict}'
 
         # Set up generators
@@ -186,8 +199,10 @@ class Trainer:
                 image_size,
                 self.calculate_label_weights(),
             )
-        elif loss_fn in ['cascaded weighted softmax dice']:
-            self.loss_fn = loss_dict[loss_fn](batch_size, image_size, self.calculate_label_weights_cascaded())
+        elif loss_fn in ['cascaded weighted softmax dice b']:
+            self.loss_fn = loss_dict[loss_fn](batch_size, image_size, self.calculate_label_weights_cascaded("B"))
+        elif loss_fn in ['cascaded weighted softmax dice c']:
+            self.loss_fn = loss_dict[loss_fn](batch_size, image_size, self.calculate_label_weights_cascaded("C"))
         else:
             self.loss_fn = loss_dict[loss_fn](batch_size, image_size)
 
@@ -219,27 +234,49 @@ class Trainer:
         # Return weightings: 1 / beta
         return 1. / beta
 
-    def calculate_label_weights_cascaded(self):
+    def calculate_label_weights_cascaded(self, setup):
         """ Calculate beta pixel weighting and its inverse as the label weights for weighted loss functions. """
-        weights = {
-            "general": np.zeros(len(self.labels) - 2),
-            "scar": 0.,
-            "pap": 0.,
-        }
+        # Binary outputs only need to be a single number, softmax outputs should include background
+        if setup == "B":
+            weights = {
+                "general": np.zeros(len(self.labels) - 2),
+                "scar": 0.,
+                "pap": 0.,
+            }
+        else:
+            weights = {
+                "general": np.zeros(4),
+                "l_lumen": 0.,
+                "l_myo": 0.,
+                "r_lumen_myo": np.zeros(3),
+                "scar": 0.,
+                "pap": 0.,
+            }
         print(f'Calculating label weightings across {len(self.train_gen.image_fnames)} label images for use in loss'
               f' function, may take a while ... ')
         for i in tqdm(range(len(self.train_gen.image_fnames) // self.batch_size)):
             _, y = self.train_gen.__getitem__(i, weight_mode=True)
             # Get the number of labelled voxels of each class for each label image
-            weights["general"] += [y["general_out"][..., j].sum() for j in range(y["general_out"].shape[-1])]
-            weights["scar"] += y["scar_out"].sum()
-            weights["pap"] += y["pap_out"].sum()
+            if setup == "B":
+                weights["general"] += [y["general_out"][..., j].sum() for j in range(y["general_out"].shape[-1])]
+                weights["scar"] += y["scar_out"].sum()
+                weights["pap"] += y["pap_out"].sum()
+            else:
+                weights["general"] += [y["general_out"][..., j].sum() for j in range(y["general_out"].shape[-1])]
+                weights["l_lumen"] += y["l_lumen_out"].sum()
+                weights["l_myo"] += y["l_myo_out"].sum()
+                weights["r_lumen_myo"] += [y["r_lumen_myo_out"][..., j].sum() for j in range(y["r_lumen_myo_out"].shape[-1])]
+                weights["scar"] += y["scar_out"].sum()
+                weights["pap"] += y["pap_out"].sum()
 
         # Get the total number of voxels in the dataset to normalize the beta
         total_voxels = np.prod(np.array([*self.image_size, len(self.train_gen.image_fnames)]))
-        weights["general"] = 1. / (weights["general"] / total_voxels)
-        weights["scar"] = 1. / (weights["scar"] / total_voxels)
-        weights["pap"] = 1. / (weights["pap"] / total_voxels)
+        print(f'{total_voxels = }')
+
+        for weight in weights:
+            weights[weight] = 1. / (weights[weight] / total_voxels)
+
+        print(f'{weights = }')
 
         return weights
 
@@ -313,9 +350,7 @@ class Trainer:
             model.summary(line_length=160)
 
             # TODO: assertions on all config stuff to prevent naughty values being given
-            # TODO: anatomical auto-encoder if time allows
             # TODO: de-noising auto-encoder if time allows
-            # TODO: end to end cascading networks for configs B and C
 
             # Learning rate decay: will be used if not 0, otherwise use static LR
             if self.lr_decay:
@@ -330,7 +365,7 @@ class Trainer:
 
             optimizer = tf.keras.optimizers.Adam(learning_rate=schedule)
 
-            if self.model not in ['CascadedUNet3DB', 'CascadedUNet2DB']:
+            if self.model not in ['CascadedUNet3DShallowB', 'CascadedUNet3DShallowC']:
                 if self.combine_labels:
                     metrics = [DiceMetric(self.batch_size)] + \
                               [ClassWiseDiceMetric(self.batch_size, i, str(i)) for i in
@@ -342,14 +377,17 @@ class Trainer:
                 if self.quality_weighted_mode:
                     metrics = {'m': metrics}
             else:
-                metrics = {
-                    'general_out':
-                        [DiceMetric(self.batch_size)] +
-                        [ClassWiseDiceMetric(self.batch_size, i, self.labels[label]) for i, label in
-                         zip(range(6), ['0', '1', '2', '4', '5', '7'])],
-                    'scar_out': [DiceMetric(self.batch_size)],
-                    'pap_out': [DiceMetric(self.batch_size)]
-                }
+                if model in ['CascadedUNet3DShallowB']:
+                    metrics = {
+                        'general_out':
+                            [DiceMetric(self.batch_size)] +
+                            [ClassWiseDiceMetric(self.batch_size, i, self.labels[label]) for i, label in
+                             zip(range(6), ['0', '1', '2', '4', '5', '7'])],
+                        'scar_out': [DiceMetric(self.batch_size)],
+                        'pap_out': [DiceMetric(self.batch_size)]
+                    }
+                else:
+                    metrics = {'general_out': [DiceMetric(self.batch_size)]}
 
             model.compile(
                 optimizer=optimizer,
