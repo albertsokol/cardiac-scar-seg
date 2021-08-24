@@ -6,6 +6,7 @@ import numpy as np
 from tensorflow import one_hot
 from tensorflow.keras.utils import Sequence
 
+from augmenter import Augmenter2D
 from readers import NIIReader, NPYReader
 from cropper import Cropper
 from masker import Masker
@@ -537,6 +538,11 @@ class CascadedGenerator3DShallowC(CascadedGenerator3DShallowB):
         y_scar = np.empty([self.batch_size, *self.image_size, 1], dtype=np.int8)
         y_pap = np.empty([self.batch_size, *self.image_size, 1], dtype=np.int8)
 
+        if len(self.image_size) == 2:
+            quality_weightings = np.zeros([self.batch_size], dtype=np.float32)
+        else:
+            quality_weightings = np.zeros([self.batch_size, self.image_size[-1]], dtype=np.float32)
+
         # Get the training data
         for i, index in enumerate(batch_indices):
             img, fname = self.read_file(index, self.image_fnames)
@@ -549,15 +555,31 @@ class CascadedGenerator3DShallowC(CascadedGenerator3DShallowB):
 
             x[i, ...] = self.prepare_img(img, fname)
             y_general[i, ...], y_l_lumen[i, ...], y_l_myo[i, ...], y_r_lumen_myo[i, ...], y_scar[i, ...], y_pap[i, ...] = self.prepare_label(label, fname)
+            if self.quality_weighting_scores:
+                quality_weightings[i, ...] = self.get_quality_weightings(fname)
 
-        return x, {
-            'general_out': y_general,
-            'l_lumen_out': y_l_lumen,
-            'l_myo_out': y_l_myo,
-            'r_lumen_myo_out': y_r_lumen_myo,
-            'scar_out': y_scar,
-            'pap_out': y_pap,
-        }
+        if self.quality_weighting_scores:
+            return {
+                'model_in': x,
+                'qw_in': quality_weightings
+            }, {
+                'general_out': y_general,
+                'l_lumen_out': y_l_lumen,
+                'l_myo_out': y_l_myo,
+                'r_lumen_myo_out': y_r_lumen_myo,
+                'scar_out': y_scar,
+                'pap_out': y_pap,
+                'qw_out': quality_weightings
+            }
+        else:
+            return x, {
+                'general_out': y_general,
+                'l_lumen_out': y_l_lumen,
+                'l_myo_out': y_l_myo,
+                'r_lumen_myo_out': y_r_lumen_myo,
+                'scar_out': y_scar,
+                'pap_out': y_pap,
+            }
 
     def prepare_label(self, label, fname):
         """ Set the label to the correct size and dimensions for placement into the ground truth tensor. """
@@ -592,3 +614,120 @@ class CascadedGenerator3DShallowC(CascadedGenerator3DShallowB):
         pap = one_hot_label[..., 6]
 
         return l_general, l_lumen[..., np.newaxis], l_myo[..., np.newaxis], r_lumen_myo, scar[..., np.newaxis], pap[..., np.newaxis]
+
+
+class DAEGenerator(Sequence):
+    """Generator for the denoising auto-encoder."""
+    def __init__(
+        self,
+        generic_data_path,
+        data_path,
+        batch_size,
+        image_size,
+        labels,
+        dataset,
+        shuffle,
+        use_cropper,
+        vox_permute_p=0.05,
+        zoom_aug=(0.96, 1.04)
+    ):
+        # Set up image filenames and indexing
+        self.generic_data_path = generic_data_path  # root of all data folders
+        self.data_path = data_path  # model and plane specific path
+        self.dataset = dataset
+        self.in_fnames = [
+            [os.path.join(data_path, x, f'{x}_{i:03}_label.npy')
+             for i in range(len(sorted(os.listdir(os.path.join(data_path, x)))) // 2)]
+            for x in sorted(os.listdir(data_path))
+        ]
+        self.in_fnames = [x for y in self.in_fnames for x in y]
+        self.index = np.arange(len(self.in_fnames))
+        self.reader = NPYReader()
+
+        # Image handling: augmentation, cropping
+        self.cropper = Cropper(generic_data_path, dataset, mode=use_cropper) if use_cropper else False
+        self.use_zoom_aug = True if zoom_aug else False
+        self.augmenter = Augmenter2D(zoom=zoom_aug)
+        self.vox_permute_p = vox_permute_p
+
+        # Model parameters
+        self.batch_size = batch_size
+        self.image_size = image_size
+        self.labels = labels
+        self.label_indices = {self.labels[k]: int(k) for k in self.labels}
+        self.use_cropper = use_cropper
+
+        # Shuffle the data before starting if shuffling has been turned on
+        self.shuffle = shuffle
+        self.on_epoch_end()
+
+    def on_epoch_end(self):
+        # Optionally shuffle the data at the end of each epoch
+        if self.shuffle:
+            np.random.shuffle(self.index)
+
+    def __len__(self):
+        # Number of gradient descent steps that will be taken per epoch
+        return len(self.in_fnames) // self.batch_size
+
+    def __getitem__(self, index, weight_mode=False):
+        # Create a list of batch_size numerical indices
+        indices = self.index[self.batch_size * index:self.batch_size * (index + 1)]
+        if indices.size == 0:
+            raise IndexError('Index not within possible range (0 to number of training steps)')
+        # Generate the data
+        x, y = self.get_data(indices, weight_mode)
+        return x, y
+
+    def get_data(self, batch_indices, weight_mode):
+        # Initialise empty arrays for the training data and labels
+        x = np.empty([self.batch_size, *self.image_size, len(self.labels)], dtype=np.int8)
+        y = np.empty([self.batch_size, *self.image_size, len(self.labels)], dtype=np.int8)
+
+        # Get the training data
+        for i, index in enumerate(batch_indices):
+            img, fname = self.read_file(index, self.in_fnames)
+
+            # Apply simple zoom augmentation if option is turned on
+            if self.use_zoom_aug and not weight_mode:
+                img = self.zoom_aug(img)
+
+            img = self.prepare(img, fname)
+
+            # Add permutation after preparing the label
+            img, label = self.permute_input(img)
+
+            x[i, ...] = img
+            y[i, ...] = label
+
+        return x, y
+
+    def read_file(self, index, fname_list):
+        """ Read the file at the given index of the given list. """
+        return self.reader.read(fname_list[index]), fname_list[index]
+
+    def prepare(self, label, fname):
+        """ Set the label to the correct size and dimensions for placement into the ground truth tensor. """
+        # If cropping, then crop the image here
+        if self.use_cropper:
+            label = self.cropper.crop(label, fname)
+
+        # Resize to the input shape of the model without interpolation
+        if label.shape != self.image_size:
+            label = self.reader.resize(label, self.image_size, interpolation_order=0)
+
+        # One hot encode the labels to create a new channel for each label and save as int8 to save space
+        return one_hot(label, len(self.labels), dtype=np.int8).numpy()
+
+    def zoom_aug(self, f):
+        """Apply simple zoom augmentation to the input."""
+        zoom_factor = self.augmenter.rng.uniform(self.augmenter.zoom[0], self.augmenter.zoom[1])
+        return self.augmenter.apply_zoom(f, zoom_factor, interpolation_order=0)
+
+    def permute_input(self, f):
+        """Apply permutation to the input label to create the new input and the target."""
+        permute_field = np.random.uniform(0.0, 1.0, f.shape[:-1])
+        new_vox_labels = np.random.randint(0, len(self.labels), f.shape[:-1])
+        f_permute = np.where(np.less_equal(permute_field, self.vox_permute_p), new_vox_labels, np.argmax(f, axis=-1))
+        f_permute = one_hot(f_permute, len(self.labels), dtype=np.int8).numpy()
+        return f_permute, f

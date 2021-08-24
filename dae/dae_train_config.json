@@ -1,1 +1,21 @@
-{}
+{
+  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/denoiser_05",
+  "data_path": "/media/y4tsu/ml-fast/cmr/",
+  "num_epochs": 100,
+  "batch_size": 4,
+  "image_size": [144, 144],
+  "use_cropper": false,
+  "learning_rate": 5e-2,
+  "lr_decay": 0.35,
+  "warmup": false,
+  "labels": {
+    "0": "bg",
+    "1": "lv lumen",
+    "2": "lv myo",
+    "3": "scar",
+    "4": "rv lumen",
+    "5": "rv myo",
+    "6": "pap",
+    "7": "aorta"
+  }
+}

@@ -1,38 +1,45 @@
 {
-  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3D_tr5_strat_c_e2e",
-  "data_path": "/media/y4tsu/ml-fast/cmr/",
-  "model": "CascadedUNet3DShallowC",
-  "plane": "transverse",
-  "num_epochs": 100,
-  "batch_size": 4,
-  "image_size": [144, 144, 5],
-  "use_cropper": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3D_tr5_cropper",
-  "learning_rate": 5e-2,
-  "lr_decay": 0.35,
-  "warmup": false,
-  "loss_fn": "cascaded weighted softmax dice c",
-  "quality_weighting": {
-    "0": 1.0,
-    "1": 1.0,
-    "2": 1.0
-  },
-  "labels": {
-    "0": "bg",
-    "1": "lv lumen",
-    "2": "lv myo",
-    "3": "scar",
-    "4": "rv lumen",
-    "5": "rv myo",
-    "6": "pap",
-    "7": "aorta"
-  },
-  "combine_labels": [],
-  "cascade": {},
-  "augmentation": {
-    "zoom": [0.96, 1.04],
-    "rotate": false,
-    "translate": false,
-    "brightness": false,
-    "deform": false
-  }
+    "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3D_tr5_auto_crop_discard_0_spline",
+    "data_path": "/media/y4tsu/ml-fast/cmr/",
+    "model": "UNet3DShallow",
+    "plane": "transverse",
+    "num_epochs": 100,
+    "batch_size": 4,
+    "image_size": [
+        144,
+        144,
+        5
+    ],
+    "use_cropper": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3D_tr5_cropper",
+    "learning_rate": 0.05,
+    "lr_decay": 0.35,
+    "warmup": false,
+    "loss_fn": "quality weighted softmax dice",
+    "quality_weighting": {
+        "0": 0.0,
+        "1": 1.0,
+        "2": 1.0
+    },
+    "labels": {
+        "0": "bg",
+        "1": "lv lumen",
+        "2": "lv myo",
+        "3": "scar",
+        "4": "rv lumen",
+        "5": "rv myo",
+        "6": "pap",
+        "7": "aorta"
+    },
+    "combine_labels": [],
+    "cascade": {},
+    "augmentation": {
+        "zoom": [
+            0.96,
+            1.04
+        ],
+        "rotate": false,
+        "translate": false,
+        "brightness": false,
+        "deform": true
+    }
 }

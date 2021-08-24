@@ -1,5 +1,5 @@
 {
-  "model_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3D_tr5_strat_b_e2e",
+  "model_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3D_tr5_auto_crop_discard_0_translate_6",
   "data_path": "/media/y4tsu/ml-fast/cmr",
   "dataset": "val",
   "post_process": false

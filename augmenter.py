@@ -227,18 +227,13 @@ class Augmenter3D(__Augmenter):
 
         # Apply translation augmentations
         if self.translate:
-            h_factor, w_factor, d_factor = self.rng.uniform(0., self.translate, 3)
+            h_factor, w_factor = self.rng.uniform(0., self.translate, 2)
+            d_factor = 0.  # translating across depth breaks shallow UNet3D inputs so just set it to 0 here
             img = self.apply_translate(img, h_factor, w_factor, d_factor)
             label = self.apply_translate(label, h_factor, w_factor, d_factor)
 
         if self.rotate:
-            # Select the 2 axes to rotate around randomly
-            axes = []
-            while len(axes) != 2:
-                axis = self.rng.integers(0, 3)
-                if axis not in axes:
-                    axes += [axis]
-
+            axes = [0, 1]
             angle = self.rng.uniform(-self.rotate, self.rotate)
             img = self.apply_rotation(img, axes, angle)
             label = self.apply_rotation(label, axes, angle, interpolation_order=0)
@@ -339,45 +334,3 @@ class Augmenter3D(__Augmenter):
                 max(td * -plr[2], 0):min(d, d + td * -plr[2])]
 
         return out
-
-
-# if __name__ == '__main__':
-#     from readers import NPYReader
-#
-#     im_num = 37
-#     slice_num = 6
-#
-#     aug = Augmenter2D(zoom=[0.96, 1.04], rotate=12)
-#     reader = NPYReader()
-#
-#     for i in tqdm(range(100)):
-#         image_fnames = [
-#             os.path.join('/media/y4tsu/ml_data/cmr/2D/train/transverse/image', x)
-#             for x in sorted(os.listdir('/media/y4tsu/ml_data/cmr/2D/train/transverse/image'))
-#         ]
-#
-#         for i, name in enumerate(image_fnames):
-#             img = reader.read(name)
-#             img = reader.normalize(img)
-#             aug_img, _ = aug.augment(img, img)
-#             if np.max(aug_img) - np.min(aug_img) != 1.:
-#                 print(name)
-#                 print(aug_img)
-#                 fig, axs = plt.subplots(2, 1)
-#                 axs[0].imshow(img, cmap='gray')
-#                 axs[1].imshow(aug_img, cmap='gray')
-#                 plt.show()
-#
-#     image = reader.read(f'/media/y4tsu/ml_data/cmr/2D/train/transverse/image/{im_num}_transverse_{slice_num}.npy')
-#     label = reader.read(f'/media/y4tsu/ml_data/cmr/2D/train/transverse/label/{im_num}_transverse_{slice_num}.npy')
-#     image = reader.normalize(image)
-#
-#     aug_image, aug_label = aug.augment(image, label)
-#
-#     fig, axs = plt.subplots(2, 2)
-#     axs[0, 0].imshow(image, cmap='gray')
-#     axs[0, 1].imshow(label, cmap='gray')
-#     axs[1, 0].imshow(aug_image, cmap='gray')
-#     axs[1, 1].imshow(aug_label, cmap='gray')
-#
-#     plt.show()

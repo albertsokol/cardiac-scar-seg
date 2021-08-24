@@ -4,7 +4,7 @@ import csv
 if __name__ == '__main__':
     result = {}
 
-    with open('/media/y4tsu/ml_data/cmr/CMRImages2_certainty.csv', 'r') as f:
+    with open('/media/y4tsu/ml-fast/cmr/CMRImages2_certainty.csv', 'r') as f:
         reader = csv.reader(f)
         next(reader)
         for line in reader:

@@ -8,6 +8,7 @@ import tensorflow as tf
 from scipy.special import softmax
 
 from cropper import Cropper
+from dae.denoiser import Denoiser
 from masker import Masker
 from metrics import DiceMetric, ClassWiseDiceMetric
 from readers import NIIReader, NPYReader
@@ -42,12 +43,6 @@ def load_predictor(predict_config):
 class __Predictor:
     def __init__(self, data_path, dataset, train_config, post_process):
         self.rng = np.random.default_rng()
-
-        if post_process:
-            assert post_process in ["erosion dilation", "dae"], "post_process must either be false of one of: " \
-                                                                "'erosion dilation', 'dae'"
-        else:
-            assert isinstance(post_process, bool), "post_process must be the false bool if not in use"
         self.post_process = post_process
 
         self.model_path = train_config['model_save_path']
@@ -70,6 +65,8 @@ class __Predictor:
         self.use_cropper = train_config['use_cropper']
         if self.use_cropper:
             self.cropper = Cropper(data_path, dataset, train_config['use_cropper'])
+        if self.post_process and self.post_process != "erosion dilation":
+            self.denoiser = Denoiser(self.post_process, len(self.labels_dict))
 
         # If masked images are required and do not exist, then create them here
         if self.cascade:
@@ -146,7 +143,7 @@ class __Predictor:
     def predict(self, fname=None, display=False, apply_combine=True, return_fname=False):
         raise NotImplementedError
 
-    def post_process_erosion_dilation(self, pred_label, kernel_size=2):
+    def post_process_erosion_dilation(self, pred_label, kernel_size=5):
         """Perform slice-wise erosion-dilation based smoothing and noise reduction of the given predicted label."""
         kernel = np.ones([kernel_size, kernel_size], dtype=np.int8)
         out = np.empty(pred_label.shape, dtype=np.int8)
@@ -176,8 +173,8 @@ class __Predictor:
         """Route to the correct post-processing function and return the updated predicted label."""
         if self.post_process == "erosion dilation":
             pred_label = self.post_process_erosion_dilation(pred_label)
-        elif self.post_process == "dae":
-            pred_label = self.post_process_dae(pred_label)
+        else:
+            pred_label = self.denoiser.denoise(pred_label)
 
         return pred_label
 
