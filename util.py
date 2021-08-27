@@ -252,4 +252,4 @@ def create_3dshallow_dataset(root, depth=3):
 
 if __name__ == '__main__':
     # create_2d_dataset('/media/y4tsu/ml_data/cmr')
-    create_3dshallow_dataset('/media/y4tsu/ml-fast/cmr', depth=5)
+    create_3dshallow_dataset('/media/y4tsu/ml-fast/cmr_fold_5', depth=5)

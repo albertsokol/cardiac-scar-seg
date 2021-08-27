@@ -33,7 +33,7 @@ class SegModel(ABC):
 
 
 class UNet2D(SegModel):
-    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3), transpose_kernel_size=(2, 2), depth=3):
+    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3), transpose_kernel_size=(2, 2), depth=4):
         assert depth in [3, 4], f"Only depth 3 or 4 supported for UNet2D, but got {depth}"
         super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, transpose_kernel_size)
         self.depth = depth

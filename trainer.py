@@ -271,12 +271,9 @@ class Trainer:
 
         # Get the total number of voxels in the dataset to normalize the beta
         total_voxels = np.prod(np.array([*self.image_size, len(self.train_gen.image_fnames)]))
-        print(f'{total_voxels = }')
 
         for weight in weights:
             weights[weight] = 1. / (weights[weight] / total_voxels)
-
-        print(f'{weights = }')
 
         return weights
 
