@@ -1,20 +1,20 @@
 {
-    "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3D_tr5_cropper_fold_3",
-    "data_path": "/media/y4tsu/ml-fast/cmr_fold_3/",
+    "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3D_tr5_discard_0_rotate_8",
+    "data_path": "/media/y4tsu/ml-fast/cmr",
     "model": "UNet3DShallow",
     "plane": "transverse",
     "num_epochs": 100,
     "batch_size": 4,
     "image_size": [
-        336,
-        336,
-        5
+        144,
+        144,
+        3
     ],
-    "use_cropper": false,
+    "use_cropper": "manual",
     "learning_rate": 0.05,
     "lr_decay": 0.35,
     "warmup": false,
-    "loss_fn": "weighted softmax dice",
+    "loss_fn": "dice",
     "quality_weighting": {
         "0": 0.0,
         "1": 1.0,
@@ -30,20 +30,7 @@
         "6": "pap",
         "7": "aorta"
     },
-    "combine_labels": [
-        [
-            "bg"
-        ],
-        [
-            "lv lumen",
-            "lv myo",
-            "scar",
-            "rv lumen",
-            "rv myo",
-            "pap",
-            "aorta"
-        ]
-    ],
+    "combine_labels": [],
     "cascade": {},
     "augmentation": {
         "zoom": [

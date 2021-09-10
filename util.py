@@ -1,7 +1,9 @@
 """Various utility functions for working with the data and models."""
 import json
 import os
+import random
 
+from PIL import Image
 import nibabel as nib
 import numpy as np
 from matplotlib import pyplot as plt
@@ -9,6 +11,7 @@ from matplotlib import rcParams
 from scipy.ndimage import rotate
 from tqdm import tqdm
 
+from cropper import Cropper
 from readers import NIIReader, NPYReader
 
 
@@ -36,18 +39,13 @@ def analyse_quality_labels_frequency():
         for x in curr:
             totals[int(x)] += 1
 
-    print(totals)
-
-    rcParams['font.family'] = 'Ubuntu'
-
     axs = plt.axes()
     axs.bar([0, 1, 2], totals, color=["sandybrown", "lightcoral", "cadetblue"])
-    plt.xlabel("Slice quality score")
+    plt.xlabel("Slice certainty score")
     plt.ylabel("Frequency")
     plt.xticks([0, 1, 2])
-    plt.title("Frequency of slice quality scores")
-    plt.savefig('plot/slice_quality_frequency.pdf', bbox_inches='tight')
-    plt.savefig('plot/slice_quality_frequency.png', dpi=300, bbox_inches='tight')
+    plt.title("Frequency of slice certainty scores")
+    plt.savefig('plot/slice_certainty_frequency.png', dpi=300, bbox_inches='tight')
 
 
 def analyse_quality_labels_class_wise():
@@ -68,9 +66,9 @@ def analyse_quality_labels_class_wise():
     }
 
     reader = NPYReader()
-    base_folder = '/media/y4tsu/ml_data/cmr/2D/'
+    base_folder = '/media/y4tsu/ml-fast/cmr/2D/'
 
-    for dataset in ['train', 'val', 'test']:
+    for dataset in ['train', 'val']:
         roots = os.listdir(os.path.join(base_folder, dataset, 'transverse'))
         for root in tqdm(roots):
             labels = [x for x in sorted(os.listdir(os.path.join(base_folder, dataset, 'transverse', root))) if 'label' in x]
@@ -90,7 +88,6 @@ def analyse_quality_labels_class_wise():
 
     # Below portion adapted from https://www.python-graph-gallery.com/11-grouped-barplot
     # set width of bars
-    rcParams['font.family'] = 'Ubuntu'
     bar_width = 0.25
 
     # set heights of bars
@@ -110,12 +107,11 @@ def analyse_quality_labels_class_wise():
     plt.xlabel('Label')
     plt.ylabel('Proportion of label out of all pixels (%)')
     plt.xticks([r + bar_width for r in range(len(q0))], labels)
-    plt.title('Proportion of label representation per quality score')
+    plt.title('Proportion of label representation per certainty score')
 
     # Create legend & Show graphic
-    plt.legend(title='Quality score')
-    plt.savefig('plot/slice_quality_class_wise.pdf', bbox_inches='tight')
-    plt.savefig('plot/slice_quality_class_wise.png', dpi=300, bbox_inches='tight')
+    plt.legend(title='Certainty score')
+    plt.savefig('plot/slice_certainty_class_wise.png', dpi=300, bbox_inches='tight')
 
 
 def rotate_incorrect_orientations():
@@ -124,7 +120,7 @@ def rotate_incorrect_orientations():
     orientation to simplify the learning task.
     """
     reader = NIIReader()
-    base_folder = '/media/y4tsu/ml_data/cmr/3D/test'
+    base_folder = '/media/y4tsu/ml-fast/cmr/3D/test'
 
     roots = sorted(os.listdir(base_folder))
     ax_thickness = []
@@ -250,6 +246,79 @@ def create_3dshallow_dataset(root, depth=3):
                 np.save(os.path.join(root, '3DShallow', g, 'transverse', f'{x}/{x}_{j:03}_label'), label[:, :, j:j + depth])
 
 
+def find_depth_distributions(root):
+    """Get the depths of all images in the dataset and display as a distribution."""
+    depths = []
+    reader = NIIReader()
+
+    for g in ['train', 'val']:
+        for x in tqdm(sorted(os.listdir(os.path.join(root, '3D', g)))):
+            image_fname = os.path.join(root, '3D', g, x, f'{x}_SAX.nii.gz')
+            image = reader.read(image_fname)
+            depths += [image.shape[-1]]
+
+    plt.hist(depths, bins=np.arange(9, 17) - 0.5, rwidth=0.75, color='cadetblue')
+    plt.xlabel('Depth of image (number of slices)')
+    plt.ylabel('Frequency')
+    plt.title('Frequency of image depths')
+
+    # Create legend & Show graphic
+    plt.savefig('/home/y4tsu/Desktop/diss img/depth_frequencies.png', bbox_inches='tight', dpi=300)
+    plt.savefig('/home/y4tsu/Desktop/diss img/depth_frequencies.pdf', bbox_inches='tight')
+    plt.show()
+
+
+def find_widths_distributions(root):
+    """Get the widths of all images (square) in the dataset and display as a distribution."""
+    depths = []
+    reader = NIIReader()
+
+    for g in ['train', 'val']:
+        for x in tqdm(sorted(os.listdir(os.path.join(root, '3D', g)))):
+            image_fname = os.path.join(root, '3D', g, x, f'{x}_SAX.nii.gz')
+            image = reader.read(image_fname)
+            depths += [image.shape[0]]
+
+    plt.hist(depths, bins=np.arange(min(depths), max(depths) + 2) - 0.5, rwidth=1, color='cadetblue')
+    plt.xlabel('Width of image')
+    plt.ylabel('Frequency')
+    plt.title('Frequency of image widths')
+
+    # Create legend & Show graphic
+    plt.savefig('/home/y4tsu/Desktop/diss img/width_frequencies.png', bbox_inches='tight', dpi=300)
+    plt.savefig('/home/y4tsu/Desktop/diss img/width_frequencies.pdf', bbox_inches='tight')
+    plt.show()
+
+
+def find_post_crop_distribution_sizes(root):
+    """Get the average size of the images using manual crop."""
+    val_cropper = Cropper(root, "val", "manual")
+    train_cropper = Cropper(root, "train", "manual")
+    all_bboxes = {**val_cropper.bboxes, **train_cropper.bboxes}
+    widths = []
+    lengths = []
+    for k in all_bboxes:
+        widths += [all_bboxes[k]["bottom"] - all_bboxes[k]["top"] + 16]
+        lengths += [all_bboxes[k]["right"] - all_bboxes[k]["left"] + 16]
+        print(all_bboxes[k])
+    print(widths)
+    print(lengths)
+
+    plt.hist(widths, bins=16, rwidth=0.8, color='cadetblue')
+    plt.xlabel('Width of image after manual crop')
+    plt.ylabel('Frequency')
+    plt.title('Frequency of image widths after applying manual cropping')
+
+    # Create legend & Show graphic
+    plt.savefig('/home/y4tsu/Desktop/diss img/width_cropped_frequencies.png', bbox_inches='tight', dpi=300)
+    plt.savefig('/home/y4tsu/Desktop/diss img/width_cropped_frequencies.pdf', bbox_inches='tight')
+    plt.show()
+
+
 if __name__ == '__main__':
-    # create_2d_dataset('/media/y4tsu/ml_data/cmr')
+    # create_2d_dataset('/media/y4tsu/ml-fast/cmr_fold_5')
     create_3dshallow_dataset('/media/y4tsu/ml-fast/cmr_fold_5', depth=5)
+    # find_widths_distributions('/media/y4tsu/ml-fast/cmr')
+    # search_certainties('/media/y4tsu/ml-fast/cmr')
+    # analyse_quality_labels_class_wise()
+    # analyse_quality_labels_frequency()

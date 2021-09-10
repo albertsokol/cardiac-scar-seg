@@ -1,5 +1,5 @@
 {
-  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/denoiser_05",
+  "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/make_graphs",
   "data_path": "/media/y4tsu/ml-fast/cmr/",
   "num_epochs": 100,
   "batch_size": 4,
