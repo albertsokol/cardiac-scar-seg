@@ -1,33 +1,34 @@
-import matplotlib.pyplot as plt
-import numpy as np
-import tensorflow as tf
+from contextlib import ExitStack
 import json
 import os
 import time
-from tqdm import tqdm
 
+import matplotlib.pyplot as plt
+import numpy as np
+import tensorflow as tf
 from tensorflow.keras.utils import plot_model
+from tqdm import tqdm
 
 from augmenter import Augmenter2D, Augmenter3D
 from callbacks import LearningRatePrinter
-from generators import (
-    Generator2D,
-    Generator3DShallow,
-    Generator3D,
-    CascadedGenerator3DShallowB,
-    CascadedGenerator3DShallowC,
-)
+from generators import Generator2D, Generator3DShallow, Generator3D, Generator3DFrozen
 from losses import (
     SoftmaxLoss,
     WeightedSoftmaxLoss,
     DiceLoss,
     WeightedSoftmaxDiceLoss,
-    CascadedWeightedSoftmaxDiceLossB,
-    CascadedWeightedSoftmaxDiceLossC,
     WeightedSoftmaxDiceLossPlusQuality,
 )
 from metrics import DiceMetric, ClassWiseDiceMetric
-from models import UNet2D, UNet3DShallow, UNet3D, CascadedUNet3DShallowB, CascadedUNet3DShallowC, VNet, VNetShallow
+from models import (
+    UNet2D,
+    UNet3DShallow,
+    UNet3D,
+    UNet3DFrozenDepth,
+    VNet,
+    VNetShallow
+)
+from readers import NIIReader
 from util import PColour
 
 
@@ -68,20 +69,18 @@ class Trainer:
             print(f'plane ignored since using 3D model: {model}')
             plane = ""
             self.augmenter = Augmenter3D(**augmentation)
+        elif model in ['UNet3DFrozenDepth']:
+            self.dimensionality = '3DFrozen'
+            self.data_root = '3D'
+            print(f'plane ignored since using 3DFrozen model: {model}')
+            plane = ""
+            self.augmenter = Augmenter3D(**augmentation)
         elif model in ['UNet3DShallow', 'VNetShallow']:
             self.dimensionality = '3DShallow'
             self.data_root = '3DShallow'
             self.augmenter = Augmenter3D(**augmentation)
             assert plane in ["transverse", "sagittal",
                              "coronal"], "Plane must be one of: 'transverse', 'sagittal', 'coronal'"
-        elif model in ['CascadedUNet3DShallowB']:
-            self.dimensionality = '3DShallowCascadedB'
-            self.data_root = '3DShallow'
-            self.augmenter = Augmenter3D(**augmentation)
-        elif model in ['CascadedUNet3DShallowC']:
-            self.dimensionality = '3DShallowCascadedC'
-            self.data_root = '3DShallow'
-            self.augmenter = Augmenter3D(**augmentation)
         else:
             self.dimensionality = '2D'
             self.data_root = '2D'
@@ -96,19 +95,17 @@ class Trainer:
 
         self.model_dict = {
             "UNet3D": UNet3D,
+            "UNet3DFrozenDepth": UNet3DFrozenDepth,
             "UNet3DShallow": UNet3DShallow,
             "UNet2D": UNet2D,
-            "CascadedUNet3DShallowB": CascadedUNet3DShallowB,
-            "CascadedUNet3DShallowC": CascadedUNet3DShallowC,
             "VNet": VNet,
             "VNetShallow": VNetShallow,
         }
         self.gen_dict = {
             "3D": Generator3D,
+            "3DFrozen": Generator3DFrozen,
             "3DShallow": Generator3DShallow,
             "2D": Generator2D,
-            "3DShallowCascadedB": CascadedGenerator3DShallowB,
-            "3DShallowCascadedC": CascadedGenerator3DShallowC,
         }
 
         assert not (warmup and lr_decay), "currently warmup and lr_decay cannot be used simultaneously"
@@ -123,14 +120,11 @@ class Trainer:
         self.lr_decay = lr_decay
         self.warmup = warmup
         self.combine_labels = combine_labels
-        if self.quality_weighted_mode:
-            monitor = 'val_m_dice'
-        else:
-            monitor = 'val_dice'
+
         self.callbacks = [
             tf.keras.callbacks.ModelCheckpoint(
                 self.model_save_path,
-                monitor=monitor if model not in ['CascadedUNet3DShallowB', 'CascadedUNet3DShallowC'] else 'val_general_out_dice',
+                monitor='val_m_dice' if self.quality_weighted_mode else 'val_dice',
                 save_best_only=True,
                 verbose=1,
                 mode='max',
@@ -143,16 +137,7 @@ class Trainer:
             'dice': DiceLoss,
             'weighted softmax dice': WeightedSoftmaxDiceLoss,
             'quality weighted softmax dice': WeightedSoftmaxDiceLossPlusQuality,
-            'cascaded weighted softmax dice b': CascadedWeightedSoftmaxDiceLossB,
-            'cascaded weighted softmax dice c': CascadedWeightedSoftmaxDiceLossC,
         }
-
-        if model == "CascadedUNet3DShallowB" and loss_fn != "cascaded weighted softmax dice b":
-            print("Switching loss fn to 'cascaded weighted softmax dice b' since Cascaded B setup was used ... ")
-            loss_fn = "cascaded weighted softmax dice b"
-        if model == "CascadedUNet3DShallowC" and loss_fn != "cascaded weighted softmax dice c":
-            print("Switching loss fn to 'cascaded weighted softmax dice c' since Cascaded C setup was used ... ")
-            loss_fn = "cascaded weighted softmax dice c"
 
         assert loss_fn in loss_dict, f'loss function {loss_fn}, not recognised, please pick one of: {loss_dict}'
 
@@ -192,19 +177,12 @@ class Trainer:
         self.labels = labels
         self.quality_weighting = quality_weighting if quality_weighting else False
         if loss_fn in ['weighted softmax', 'weighted softmax dice']:
-            self.loss_fn = loss_dict[loss_fn](batch_size, image_size, self.calculate_label_weights())
+            self.loss_fn = loss_dict[loss_fn](batch_size, self.calculate_label_weights())
         elif loss_fn in ['quality weighted softmax dice']:
-            self.loss_fn = loss_dict[loss_fn](
-                batch_size,
-                image_size,
-                self.calculate_label_weights(),
-            )
-        elif loss_fn in ['cascaded weighted softmax dice b']:
-            self.loss_fn = loss_dict[loss_fn](batch_size, image_size, self.calculate_label_weights_cascaded("B"))
-        elif loss_fn in ['cascaded weighted softmax dice c']:
-            self.loss_fn = loss_dict[loss_fn](batch_size, image_size, self.calculate_label_weights_cascaded("C"))
+            full_3d_mode = True if self.model in ["UNet3D", "UNet3DFrozenDepth"] else False
+            self.loss_fn = loss_dict[loss_fn](batch_size, self.calculate_label_weights(), full_3d_mode)
         else:
-            self.loss_fn = loss_dict[loss_fn](batch_size, image_size)
+            self.loss_fn = loss_dict[loss_fn](batch_size)
 
         # Learning rate warmup: will be used if true
         if self.warmup:
@@ -228,54 +206,18 @@ class Trainer:
             else:
                 sums += [label_img[..., j].sum() for j in range(label_img.shape[-1])]
         # Get the total number of voxels in the dataset to normalize the beta
-        total_voxels = np.prod(np.array([*self.image_size, len(self.train_gen.image_fnames)]))
+        if self.model != "UNet3DFrozenDepth":
+            total_voxels = np.prod(np.array([*self.image_size, len(self.train_gen.image_fnames)]))
+        else:
+            total_voxels = 0
+            reader = NIIReader()
+            for fname in self.train_gen.image_fnames:
+                img = reader.read(fname)
+                total_voxels += self.image_size[0] * self.image_size[1] * img.shape[-1]
         beta = sums / total_voxels
         print(1. / beta)
         # Return weightings: 1 / beta
         return 1. / beta
-
-    def calculate_label_weights_cascaded(self, setup):
-        """ Calculate beta pixel weighting and its inverse as the label weights for weighted loss functions. """
-        # Binary outputs only need to be a single number, softmax outputs should include background
-        if setup == "B":
-            weights = {
-                "general": np.zeros(len(self.labels) - 2),
-                "scar": 0.,
-                "pap": 0.,
-            }
-        else:
-            weights = {
-                "general": np.zeros(4),
-                "l_lumen": 0.,
-                "l_myo": 0.,
-                "r_lumen_myo": np.zeros(3),
-                "scar": 0.,
-                "pap": 0.,
-            }
-        print(f'Calculating label weightings across {len(self.train_gen.image_fnames)} label images for use in loss'
-              f' function, may take a while ... ')
-        for i in tqdm(range(len(self.train_gen.image_fnames) // self.batch_size)):
-            _, y = self.train_gen.__getitem__(i, weight_mode=True)
-            # Get the number of labelled voxels of each class for each label image
-            if setup == "B":
-                weights["general"] += [y["general_out"][..., j].sum() for j in range(y["general_out"].shape[-1])]
-                weights["scar"] += y["scar_out"].sum()
-                weights["pap"] += y["pap_out"].sum()
-            else:
-                weights["general"] += [y["general_out"][..., j].sum() for j in range(y["general_out"].shape[-1])]
-                weights["l_lumen"] += y["l_lumen_out"].sum()
-                weights["l_myo"] += y["l_myo_out"].sum()
-                weights["r_lumen_myo"] += [y["r_lumen_myo_out"][..., j].sum() for j in range(y["r_lumen_myo_out"].shape[-1])]
-                weights["scar"] += y["scar_out"].sum()
-                weights["pap"] += y["pap_out"].sum()
-
-        # Get the total number of voxels in the dataset to normalize the beta
-        total_voxels = np.prod(np.array([*self.image_size, len(self.train_gen.image_fnames)]))
-
-        for weight in weights:
-            weights[weight] = 1. / (weights[weight] / total_voxels)
-
-        return weights
 
     def warmup_lr(self, *args):
         """ Warm up learning rate scheduler. Just naively reduce the LR for epoch 1 to get steadier momentum. """
@@ -289,22 +231,21 @@ class Trainer:
     def plot(self, history):
         # Plot the losses and dice coefficients for the model
         prefix = 'm_' if self.quality_weighted_mode else ''
-        e2e_cascading = True if self.model in ['CascadedUNet3DB', 'CascadedUNet2DB'] else False
         colors = ['coral', 'dodgerblue', 'teal', 'darkorchid', 'crimson', 'limegreen', 'hotpink', 'mediumblue',
                   'darkorange', 'navy', 'darkslategrey', 'purple', 'maroon', 'green', 'deeppink', 'navy']
 
         fig, axs = plt.subplots(nrows=2, ncols=2)
         fig.set_size_inches(8, 12)
 
-        t_loss_hx = history.history[f'{prefix}loss'] if not e2e_cascading else history.history[f'{prefix}general_out_loss']
-        v_loss_hx = history.history[f'val_{prefix}loss'] if not e2e_cascading else history.history[f'val_{prefix}general_out_loss']
+        t_loss_hx = history.history[f'{prefix}loss']
+        v_loss_hx = history.history[f'val_{prefix}loss']
         axs[0, 0].plot(range(1, 1 + len(t_loss_hx)), t_loss_hx, 'r-', label='train loss')
         axs[0, 0].plot(range(1, 1 + len(v_loss_hx)), v_loss_hx, 'b-', label='val loss')
         axs[0, 0].set(xlabel='epochs', ylabel='loss')
         axs[0, 0].legend(loc="upper right")
 
-        t_dice_hx = history.history[f'{prefix}dice'] if not e2e_cascading else history.history[f'{prefix}general_out_dice']
-        v_dice_hx = history.history[f'val_{prefix}dice'] if not e2e_cascading else history.history[f'val_{prefix}general_out_dice']
+        t_dice_hx = history.history[f'{prefix}dice']
+        v_dice_hx = history.history[f'val_{prefix}dice']
         axs[0, 1].plot(range(1, 1 + len(t_dice_hx)), t_dice_hx, 'r-', label='train dice')
         axs[0, 1].plot(range(1, 1 + len(v_dice_hx)), v_dice_hx, 'b-', label='val dice')
         axs[0, 1].set(xlabel='epochs', ylabel='dice coefficient')
@@ -313,30 +254,35 @@ class Trainer:
         t_class_dx_labels = [x for x in list(history.history.keys()) if 'val' not in x and 'loss' not in x and 'dice' not in x]
         v_class_dx_labels = [x for x in list(history.history.keys()) if 'val' in x and 'loss' not in x and 'dice' not in x]
 
-        if not e2e_cascading:
-            for x in t_class_dx_labels:
-                curr_hx = history.history[x]
-                color = colors.pop(0)
-                axs[1, 0].plot(range(1, 1 + len(curr_hx)), curr_hx, color=color, label=f'{x} dice')
+        for x in t_class_dx_labels:
+            curr_hx = history.history[x]
+            color = colors.pop(0)
+            axs[1, 0].plot(range(1, 1 + len(curr_hx)), curr_hx, color=color, label=f'{x} dice')
 
-            for x in v_class_dx_labels:
-                curr_hx = history.history[x]
-                color = colors.pop(0)
-                axs[1, 1].plot(range(1, 1 + len(curr_hx)), curr_hx, color=color, label=f'{x} dice')
+        for x in v_class_dx_labels:
+            curr_hx = history.history[x]
+            color = colors.pop(0)
+            axs[1, 1].plot(range(1, 1 + len(curr_hx)), curr_hx, color=color, label=f'{x} dice')
 
-            axs[1, 0].set(xlabel='epochs', ylabel='dice coefficient')
-            axs[1, 0].legend(loc="lower right")
+        axs[1, 0].set(xlabel='epochs', ylabel='dice coefficient')
+        axs[1, 0].legend(loc="lower right")
 
-            axs[1, 1].set(xlabel='epochs', ylabel='dice coefficient')
-            axs[1, 1].legend(loc="lower right")
+        axs[1, 1].set(xlabel='epochs', ylabel='dice coefficient')
+        axs[1, 1].legend(loc="lower right")
 
         plt.show()
 
     def train(self):
         """ Train the model. """
-        s = tf.distribute.MirroredStrategy()
-        print(tf.config.experimental.list_physical_devices("GPU"))
-        with s.scope():
+        with ExitStack() as context:
+            # This will add multiple-GPU strategy as a context if the frozen depth model is not used
+            if self.model not in ["UNet3DFrozenDepth"]:
+                # Frozen depth model has different depth inputs and is therefore un-batchable in Tensorflow, which
+                # also prevents multi-GPU training
+                s = tf.distribute.MirroredStrategy()
+                print(tf.config.experimental.list_physical_devices("GPU"))
+                context.enter_context(s.scope())
+
             model = self.model_dict[self.model](
                 input_size=self.image_size,
                 output_length=len(self.combine_labels) if self.combine_labels else len(self.labels),
@@ -345,9 +291,6 @@ class Trainer:
 
             plot_model(model, f'plot/{self.model}_plot.png', show_shapes=True)
             model.summary(line_length=160)
-
-            # TODO: assertions on all config stuff to prevent naughty values being given
-            # TODO: de-noising auto-encoder if time allows
 
             # Learning rate decay: will be used if not 0, otherwise use static LR
             if self.lr_decay:
@@ -362,29 +305,16 @@ class Trainer:
 
             optimizer = tf.keras.optimizers.Adam(learning_rate=schedule)
 
-            if self.model not in ['CascadedUNet3DShallowB', 'CascadedUNet3DShallowC']:
-                if self.combine_labels:
-                    metrics = [DiceMetric(self.batch_size)] + \
-                              [ClassWiseDiceMetric(self.batch_size, i, str(i)) for i in
-                               range(len(self.combine_labels))]
-                else:
-                    metrics = [DiceMetric(self.batch_size)] + \
-                              [ClassWiseDiceMetric(self.batch_size, i, self.labels[label]) for i, label in
-                               zip(range(len(self.labels)), self.labels)]
-                if self.quality_weighted_mode:
-                    metrics = {'m': metrics}
+            if self.combine_labels:
+                metrics = [DiceMetric(self.batch_size)] + \
+                          [ClassWiseDiceMetric(self.batch_size, i, str(i)) for i in
+                           range(len(self.combine_labels))]
             else:
-                if model in ['CascadedUNet3DShallowB']:
-                    metrics = {
-                        'general_out':
-                            [DiceMetric(self.batch_size)] +
-                            [ClassWiseDiceMetric(self.batch_size, i, self.labels[label]) for i, label in
-                             zip(range(6), ['0', '1', '2', '4', '5', '7'])],
-                        'scar_out': [DiceMetric(self.batch_size)],
-                        'pap_out': [DiceMetric(self.batch_size)]
-                    }
-                else:
-                    metrics = {'general_out': [DiceMetric(self.batch_size)]}
+                metrics = [DiceMetric(self.batch_size)] + \
+                          [ClassWiseDiceMetric(self.batch_size, i, self.labels[label]) for i, label in
+                           zip(range(len(self.labels)), self.labels)]
+            if self.quality_weighted_mode:
+                metrics = {'m': metrics}
 
             model.compile(
                 optimizer=optimizer,

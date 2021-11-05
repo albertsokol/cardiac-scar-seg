@@ -9,3 +9,4 @@ quality_scores.json
 train_config.json
 /box_test/
 /dice_res/
+/saved_preds/

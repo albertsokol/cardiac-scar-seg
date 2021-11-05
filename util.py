@@ -1,14 +1,17 @@
 """Various utility functions for working with the data and models."""
+import csv
 import json
 import os
 import random
 
+import pandas as pd
 from PIL import Image
 import nibabel as nib
 import numpy as np
 from matplotlib import pyplot as plt
 from matplotlib import rcParams
 from scipy.ndimage import rotate
+from scipy import stats
 from tqdm import tqdm
 
 from cropper import Cropper
@@ -315,10 +318,67 @@ def find_post_crop_distribution_sizes(root):
     plt.show()
 
 
+def plot_extra_metrics():
+    plt.rcParams.update({'font.size': 7})
+
+    df = pd.read_csv("volume_hd_metrics.csv")
+    print(df.head(5))
+    plt.scatter(df["ground truth scar volume"], df["predicted scar volume"], s=10)
+    plt.xlabel("Ground truth scar volume (mm3)")
+    plt.ylabel("Predicted scar volume (mm3)")
+    pearson = stats.pearsonr(df['ground truth scar volume'], df['predicted scar volume'])
+    plt.title(f"Predicted vs. ground truth scar volume\n"
+              f"Pearson coefficient = {pearson[0]:.4f}")
+    plt.savefig('/home/y4tsu/Desktop/diss img/predicted vs ground truth scar volume correlation.png', bbox_inches='tight', dpi=300)
+    plt.show()
+
+    min_bin = min(min(df["ground truth scar volume"]), min(df["predicted scar volume"]))
+    max_bin = max(max(df["ground truth scar volume"]), max(df["predicted scar volume"]))
+    plt.hist([df["ground truth scar volume"], df["predicted scar volume"]], bins=16, rwidth=0.8, color=['cadetblue', 'orange'], range=(min_bin, max_bin))
+    plt.xlabel("Scar volume (mm3)")
+    plt.ylabel("Frequency")
+    plt.title("Frequency of scar volumes for ground truth and predicted scars\n"
+              f"Median ground truth scar volume = {np.median(df['ground truth scar volume']):.0f}\n"
+              f"Median predicted scar volume = {np.median(df['predicted scar volume']):.0f}"
+              )
+    plt.legend(["Ground truth scar", "Predicted scar"], title="Legend")
+    plt.savefig('/home/y4tsu/Desktop/diss img/predicted vs ground truth scar volume distributions.png', bbox_inches='tight', dpi=300)
+    plt.show()
+
+    plt.scatter(df["ground truth scar volume"], df["hausdorff distance"], s=10)
+    plt.xlabel("Ground truth scar volume (mm3)")
+    plt.ylabel("Hausdorff distance (mm)")
+    pearson = stats.pearsonr(df['ground truth scar volume'], df['hausdorff distance'])
+    plt.title(f"Hausdorff distance vs. ground truth scar volume\n"
+              f"Pearson coefficient = {pearson[0]:.4f}")
+    plt.savefig('/home/y4tsu/Desktop/diss img/hausdorff distance vs ground truth scar volume.png', bbox_inches='tight', dpi=300)
+    plt.show()
+
+
+def find_wilcoxon(path_a, path_b):
+    """Get statistical significance of differences between tissues for 2 models."""
+    a_scar_dice = pd.read_csv(path_a)
+    b_scar_dice = pd.read_csv(path_b)
+    # TODO: remove skip nums from both dataframes
+
+    skip_files = ["20CA015_N055", "20CA015_N110", "20CA015_N207", "20CA015_N051", "20CA015_N109"]
+    a_scar_dice = a_scar_dice[~a_scar_dice["file"].isin(skip_files)]
+    b_scar_dice = b_scar_dice[~b_scar_dice["file"].isin(skip_files)]
+
+    a_scar_dice = a_scar_dice["scar"]
+    b_scar_dice = b_scar_dice["scar"]
+
+    d = b_scar_dice - a_scar_dice
+    w, p = stats.wilcoxon(d)
+    print(f'Result (NULL): w={w}, p={p}')
+
+
 if __name__ == '__main__':
     # create_2d_dataset('/media/y4tsu/ml-fast/cmr_fold_5')
-    create_3dshallow_dataset('/media/y4tsu/ml-fast/cmr_fold_5', depth=5)
+    # create_3dshallow_dataset('/media/y4tsu/ml-fast/cmr_fold_5', depth=5)
     # find_widths_distributions('/media/y4tsu/ml-fast/cmr')
     # search_certainties('/media/y4tsu/ml-fast/cmr')
     # analyse_quality_labels_class_wise()
     # analyse_quality_labels_frequency()
+    # plot_extra_metrics()
+    find_wilcoxon("dice_res/3D_frozen_dices_1.csv", "dice_res/3D_frozen_dices_plus_certainty_1.csv")

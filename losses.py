@@ -7,10 +7,16 @@ from tensorflow.keras.losses import Loss
 
 class __Loss(Loss):
     """ Generic methods for all loss functions. """
-    def __init__(self, batch_size, image_size, **kwargs):
+    def __init__(self, batch_size, **kwargs):
         super().__init__(**kwargs)
         self.batch_size = batch_size
-        self.num_vox = reduce(lambda x, y: x * y, image_size, 1)
+
+    @staticmethod
+    def get_num_vox(t):
+        """Get the number of voxels in a tensor."""
+        shape = tf.shape(t)[:-1]
+        num_voxels = tf.math.reduce_prod(shape)
+        return tf.cast(num_voxels, tf.float32)
 
     def get_config(self):
         return super().get_config()
@@ -27,8 +33,8 @@ class __Loss(Loss):
 
 class SoftmaxLoss(__Loss):
     """ Basic non-weighted softmax loss. """
-    def __init__(self, batch_size, image_size):
-        super().__init__(batch_size, image_size)
+    def __init__(self, batch_size):
+        super().__init__(batch_size)
 
     def call(self, *args, **kwargs):
         y_true, y_pred = args[0], args[1]
@@ -36,13 +42,13 @@ class SoftmaxLoss(__Loss):
         loss = - K.sum(y_true * K.log(self.clip(y_pred)))
 
         # Return loss normalized by batch size and image size for stable LRs across different input sizes
-        return loss / self.num_vox / self.batch_size
+        return loss / self.get_num_vox(y_pred)
 
 
 class WeightedSoftmaxLoss(__Loss):
     """ Categorical cross-entropy loss, which is used in the original UNet-3D paper. """
-    def __init__(self, batch_size, image_size, label_weights):
-        super().__init__(batch_size, image_size)
+    def __init__(self, batch_size, label_weights):
+        super().__init__(batch_size)
         self.label_weights = label_weights
 
     def call(self, *args, **kwargs):
@@ -52,13 +58,13 @@ class WeightedSoftmaxLoss(__Loss):
         loss = - K.sum(self.label_weights * y_true * K.log(self.clip(y_pred)))
 
         # Return loss normalized by batch size and image size for stable LRs across different input sizes
-        return loss / self.num_vox / self.batch_size
+        return loss / self.get_num_vox(y_pred)
 
 
 class DiceLoss(__Loss):
     """ Dice loss function. """
-    def __init__(self, batch_size, image_size):
-        super().__init__(batch_size, image_size)
+    def __init__(self, batch_size):
+        super().__init__(batch_size)
 
     def call(self, *args, **kwargs):
         y_true, y_pred = K.flatten(args[0]), K.flatten(args[1])
@@ -73,18 +79,17 @@ class DiceLoss(__Loss):
 
 class WeightedSoftmaxDiceLoss(__Loss):
     """ A combination of weighted cross-entropy loss and Dice loss with adjustable weighting. """
-    def __init__(self, batch_size, image_size, label_weights, dice_weight=0.5):
+    def __init__(self, batch_size, label_weights, dice_weight=0.5):
         """
         Initialiser for WeightedSoftmaxDiceLoss.
 
         Params
         ======
         :param batch_size: int: number of examples per training batch
-        :param image_size:
         :param label_weights:
         :param dice_weight: float: e.g., if 2., then Dice loss is doubled to weight it more strongly
         """
-        super().__init__(batch_size, image_size)
+        super().__init__(batch_size)
         self.label_weights = label_weights
         self.dice_weight = dice_weight
 
@@ -93,7 +98,7 @@ class WeightedSoftmaxDiceLoss(__Loss):
 
         # First, get the softmax loss
         softmax_loss = - K.sum(self.label_weights * y_true * K.log(self.clip(y_pred)))
-        softmax_loss = softmax_loss / self.num_vox / self.batch_size
+        softmax_loss /= self.get_num_vox(y_pred)
 
         # Then, get the Dice loss
         numerator = 2 * K.sum(y_true * y_pred) + 1e-7
@@ -109,22 +114,22 @@ class WeightedSoftmaxDiceLossPlusQuality(__Loss):
     """
     A combination of weighted cross-entropy loss and Dice loss with adjustable weighting and quality score weighting.
     """
-    def __init__(self, batch_size, image_size, label_weights, dice_weight=0.5):
+    def __init__(self, batch_size, label_weights, full_3d_mode, dice_weight=0.5):
         """
         Initialiser for WeightedSoftmaxDiceLossPlusQuality.
 
         Params
         ======
         :param batch_size: int: number of examples per training batch
-        :param image_size:
         :param label_weights:
         :param dice_weight: float: e.g., if 2., then Dice loss is doubled to weight it more strongly
         """
-        super().__init__(batch_size, image_size)
+        super().__init__(batch_size)
         self.label_weights = label_weights
         self.dice_weight = dice_weight
         self.curr_slice_qualities = None
-        self.full_3d_mode = True if len(image_size) > 2 else False
+        self.full_3d_mode = full_3d_mode
+
         if self.full_3d_mode:
             self.qw_out_name = ["IteratorGetNext:1", "Identity_1:0"]
             self.sum_axes = [1, 2, 4]
@@ -146,7 +151,7 @@ class WeightedSoftmaxDiceLossPlusQuality(__Loss):
 
         # First, get the softmax loss
         softmax_loss = - K.sum(self.label_weights * y_true * K.log(self.clip(y_pred)), axis=self.sum_axes)
-        softmax_loss = softmax_loss / self.num_vox / self.batch_size
+        softmax_loss /= self.get_num_vox(y_pred)
 
         # Then, get the Dice loss
         numerator = 2 * K.sum(y_true * y_pred, axis=self.sum_axes) + 1e-7
@@ -159,78 +164,3 @@ class WeightedSoftmaxDiceLossPlusQuality(__Loss):
         ele_wise_loss *= self.curr_slice_qualities
 
         return K.sum(ele_wise_loss)
-
-
-class CascadedWeightedSoftmaxDiceLossB(__Loss):
-    def __init__(self, batch_size, image_size, label_weights, dice_weight=0.5):
-        super().__init__(batch_size, image_size)
-        self.label_weights = label_weights
-        self.dice_weight = dice_weight
-
-    def call(self, *args, **kwargs):
-        y_true, y_pred = args[0], args[1]
-
-        # First, get the softmax loss
-        if "general" in args[1].name:
-            curr_weights = self.label_weights["general"]
-            softmax_loss = - K.sum(curr_weights * y_true * K.log(self.clip(y_pred)))
-        else:
-            if "scar" in args[1].name:
-                curr_weights = self.label_weights["scar"]
-            else:
-                curr_weights = self.label_weights["pap"]
-            softmax_loss = 4. * curr_weights * tf.keras.metrics.binary_crossentropy(y_true, y_pred)
-
-        softmax_loss = softmax_loss / self.num_vox / self.batch_size
-
-        # Then, get the Dice loss
-        numerator = 2 * K.sum(y_true * y_pred) + 1e-7
-        denominator = K.sum(y_true) + K.sum(y_pred) + 1e-7
-        dice_coefficient = numerator / denominator
-        dice_loss = 1 - dice_coefficient
-
-        # Finally, combine the two
-        return self.dice_weight * dice_loss + softmax_loss
-
-
-class CascadedWeightedSoftmaxDiceLossC(__Loss):
-    def __init__(self, batch_size, image_size, label_weights, dice_weight=0.5):
-        super().__init__(batch_size, image_size)
-        self.label_weights = label_weights
-        self.dice_weight = dice_weight
-
-    def call(self, *args, **kwargs):
-        y_true, y_pred = args[0], args[1]
-
-        # First, get the softmax loss
-        if "general" in args[1].name:
-            curr_weights = self.label_weights["general"]
-            softmax_loss = - K.sum(curr_weights * y_true * K.log(self.clip(y_pred)))
-        elif "r_lumen_myo" in args[1].name:
-            curr_weights = self.label_weights["r_lumen_myo"]
-            softmax_loss = - K.sum(curr_weights * y_true * K.log(self.clip(y_pred)))
-        else:
-            multiplier = 1.
-            if "l_lumen" in args[1].name:
-                curr_weights = self.label_weights["l_lumen"]
-            elif "l_myo" in args[1].name:
-                curr_weights = self.label_weights["l_myo"]
-            elif "scar" in args[1].name:
-                curr_weights = self.label_weights["scar"]
-                multiplier = 4.
-            else:
-                curr_weights = self.label_weights["pap"]
-                multiplier = 4.
-
-            softmax_loss = multiplier * curr_weights * tf.keras.metrics.binary_crossentropy(y_true, y_pred)
-
-        softmax_loss = softmax_loss / self.num_vox / self.batch_size
-
-        # Then, get the Dice loss
-        numerator = 2 * K.sum(y_true * y_pred) + 1e-7
-        denominator = K.sum(y_true) + K.sum(y_pred) + 1e-7
-        dice_coefficient = numerator / denominator
-        dice_loss = 1 - dice_coefficient
-
-        # Finally, combine the two
-        return self.dice_weight * dice_loss + softmax_loss

@@ -165,6 +165,80 @@ class UNet3D(SegModel):
         return out
 
 
+class UNet3DFrozenDepth(SegModel):
+    """ Implementation of UNet-3D, keeping the dimensionality of the depth axis consistent with the input."""
+    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3, 3), transpose_kernel_size=(2, 2, 2)):
+        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, transpose_kernel_size)
+
+    def down_conv_block(self, m, filters_a, filters_b):
+        """3D down-convolution block."""
+        m = layers.Conv3D(filters_a, self.kernel_size, padding='same', activation='relu')(m)
+        m = layers.BatchNormalization()(m)
+
+        m = layers.Conv3D(filters_b, self.kernel_size, padding='same', activation='relu')(m)
+        m = layers.BatchNormalization()(m)
+
+        return m
+
+    def up_conv_block(self, m, prev, filters_a, filters_b):
+        """3D up-convolution block."""
+        m = layers.Conv3DTranspose(
+            filters_a,
+            self.transpose_kernel_size,
+            strides=(2, 2, 1),
+            padding='same',
+            activation='relu'
+        )(m)
+        m = layers.BatchNormalization()(m)
+
+        m = layers.Concatenate()([m, prev])
+
+        m = layers.Conv3D(filters_b, self.kernel_size, padding='same', activation='relu')(m)
+        m = layers.BatchNormalization()(m)
+
+        m = layers.Conv3D(filters_b, self.kernel_size, padding='same', activation='relu')(m)
+        m = layers.BatchNormalization()(m)
+
+        return m
+
+    def define_architecture(self, model_input, final_activation='softmax', out_name='m'):
+        """ Build the UNet-3D model. """
+        # Downsampling / encoding portion
+        conv0 = self.down_conv_block(model_input, 32, 64)
+        pool0 = layers.MaxPooling3D((2, 2, 1), strides=(2, 2, 1))(conv0)
+
+        conv1 = self.down_conv_block(pool0, 64, 128)
+        pool1 = layers.MaxPooling3D((2, 2, 1), strides=(2, 2, 1))(conv1)
+
+        conv2 = self.down_conv_block(pool1, 128, 256)
+        pool2 = layers.MaxPooling3D((2, 2, 1), strides=(2, 2, 1))(conv2)
+
+        # Middle of network
+        conv3 = self.down_conv_block(pool2, 256, 512)
+
+        # Upsampling / decoding portion
+        uconv2 = self.up_conv_block(conv3, conv2, 512, 256)
+        uconv1 = self.up_conv_block(uconv2, conv1, 256, 128)
+        uconv0 = self.up_conv_block(uconv1, conv0, 128, 64)
+
+        out = layers.Conv3D(self.output_length, (1, 1, 1), padding='same', activation=None)(uconv0)
+        out = layers.Activation(final_activation, name=out_name)(out)
+
+        return out
+
+    def create_model(self):
+        """ Create a Model object which can be used for training. """
+        # Input is the 2D image size plus None for the depth and then a 1-dimension representing the channels
+        model_input = layers.Input((*self.input_size[:2], None, 1), name='model_in')
+        model = models.Model(inputs=model_input, outputs=self.define_architecture(model_input))
+
+        if self.quality_weighted_mode:
+            qw_in = layers.Input(shape=(None,), name='qw_in')
+            return models.Model(inputs=[model.input, qw_in], outputs=[layers.Layer(name='qw_out')(qw_in), model.output])
+        else:
+            return model
+
+
 class UNet3DShallow(SegModel):
     """ Implementation of shallow UNet-3D as per Fahmy et al's 2019 paper: https://pubs.rsna.org/doi/10.1148/radiol.2019190737 """
     def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3, 3), transpose_kernel_size=(2, 2, 2)):
@@ -352,67 +426,3 @@ class DenoisingUNet(UNet2D):
         # Input is the 2D image size plus a dimension representing the 8 different labels
         model_input = layers.Input((*self.input_size, self.output_length), name='model_in')
         return models.Model(inputs=model_input, outputs=self.define_architecture(model_input))
-
-
-class CascadedUNet3DShallowB(SegModel):
-    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3, 3), transpose_kernel_size=(2, 2, 2)):
-        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, transpose_kernel_size)
-
-    def define_architecture(self, model_input, out_name=None):
-        unet_1 = UNet3DShallow(self.input_size, 6, self.kernel_size, self.transpose_kernel_size)
-        unet_1_out = unet_1.define_architecture(model_input, out_name='general_out')
-        unet_1_out_softmax = tf.math.argmax(unet_1_out, axis=-1, output_type=tf.dtypes.int32)
-        unet_1_out_softmax = tf.expand_dims(unet_1_out_softmax, axis=-1)
-
-        # Get masked myocardium and lumen based on the predictions which will be used by the cascaded models
-        mask_lv_myo = tf.where(tf.math.equal(unet_1_out_softmax, 2), model_input, 0)
-        mask_lv_lumen = tf.where(tf.math.equal(unet_1_out_softmax, 1), model_input, 0)
-
-        # Build the cascaded models
-        unet_scar = UNet3DShallow(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
-        unet_scar_out = unet_scar.define_architecture(mask_lv_myo, 'sigmoid', out_name='scar_out')
-
-        unet_pap = UNet3DShallow(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
-        unet_pap_out = unet_pap.define_architecture(mask_lv_lumen, 'sigmoid', out_name='pap_out')
-
-        return unet_1_out, unet_scar_out, unet_pap_out
-
-
-class CascadedUNet3DShallowC(SegModel):
-    def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3, 3), transpose_kernel_size=(2, 2, 2)):
-        super().__init__(input_size, output_length, quality_weighted_mode, kernel_size, transpose_kernel_size)
-
-    def define_architecture(self, model_input, out_name=None):
-        unet_root = UNet3DShallow(self.input_size, 4, self.kernel_size, self.transpose_kernel_size)
-        unet_root_out = unet_root.define_architecture(model_input, out_name='general_out')
-        unet_root_out_softmax = tf.math.argmax(unet_root_out, axis=-1, output_type=tf.dtypes.int32)
-        unet_root_out_softmax = tf.expand_dims(unet_root_out_softmax, axis=-1)
-
-        # Get left heart lumen and myocardium segmentations
-        masked_l_ht = tf.where(tf.math.equal(unet_root_out_softmax, 1), model_input, 0)
-
-        unet_l_myo = UNet3DShallow(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
-        unet_l_myo_out = unet_l_myo.define_architecture(masked_l_ht, 'sigmoid', out_name='l_myo_out')
-        unet_l_myo_out_softmax = tf.math.argmax(unet_l_myo_out, axis=-1, output_type=tf.dtypes.int32)
-        unet_l_myo_out_softmax = tf.expand_dims(unet_l_myo_out_softmax, axis=-1)
-        masked_l_myo = tf.where(tf.math.equal(unet_l_myo_out_softmax, 1), model_input, 0)
-
-        unet_l_lumen = UNet3DShallow(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
-        unet_l_lumen_out = unet_l_lumen.define_architecture(masked_l_ht, 'sigmoid', out_name='l_lumen_out')
-        unet_l_lumen_out_softmax = tf.math.argmax(unet_l_lumen_out, axis=-1, output_type=tf.dtypes.int32)
-        unet_l_lumen_out_softmax = tf.expand_dims(unet_l_lumen_out_softmax, axis=-1)
-        masked_l_lumen = tf.where(tf.math.equal(unet_l_lumen_out_softmax, 1), model_input, 0)
-
-        # Get right heart segmentations
-        masked_r_ht = tf.where(tf.math.equal(unet_root_out_softmax, 2), model_input, 0)
-        unet_r_lumen_myo = UNet3DShallow(self.input_size, 3, self.kernel_size, self.transpose_kernel_size)
-        unet_r_lumen_myo_out = unet_r_lumen_myo.define_architecture(masked_r_ht, out_name='r_lumen_myo_out')
-
-        # Get scar and papillary muscle segmentations
-        unet_scar = UNet3DShallow(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
-        unet_scar_out = unet_scar.define_architecture(masked_l_myo, 'sigmoid', out_name='scar_out')
-
-        unet_pap = UNet3DShallow(self.input_size, 1, self.kernel_size, self.transpose_kernel_size)
-        unet_pap_out = unet_pap.define_architecture(masked_l_lumen, 'sigmoid', out_name='pap_out')
-
-        return unet_root_out, unet_l_myo_out, unet_l_lumen_out, unet_r_lumen_myo_out, unet_scar_out, unet_pap_out

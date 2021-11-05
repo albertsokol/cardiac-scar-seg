@@ -268,41 +268,58 @@ class Augmenter3D(__Augmenter):
         """
         h, w, d = img.shape
 
+        # print(f"apply_zoom: {h=}, {w=}, {d=}")
+
         # Get a random zoom factor between between the lower and upper bounds of self.zoom
-        zoom_tuple = (zoom_factor,) * 3
+        zoom_tuple = (zoom_factor, zoom_factor, 1)
+
+        # print(f"apply_zoom: {zoom_factor=}, {zoom_tuple=}")
 
         # Zooming out
         if zoom_factor < 1:
             # Bounding box of the zoomed-out image within the output array
             zh = int(np.round(h * zoom_factor))
             zw = int(np.round(w * zoom_factor))
-            zd = int(np.round(d * zoom_factor))
+            # zd = int(np.ceil(d * zoom_factor))
             top = (h - zh) // 2
             left = (w - zw) // 2
-            inside = (d - zd) // 2
+            # inside = (d - zd) // 2
+
+            # print(f"apply_zoom: {zh=}, {zw=}, {top=}, {left=}")
 
             # Zero-padding
             out = np.zeros_like(img)
-            out[top:top + zh, left:left + zw, inside:inside + zd] = snd.zoom(img, zoom_tuple, order=interpolation_order)
+            out[top:top + zh, left:left + zw, ...] = snd.zoom(img, zoom_tuple, order=interpolation_order)
+
+            # print(f"apply_zoom: {out.shape=}")
 
         # Zooming in
         else:
             # Bounding box of the zoomed-in region within the input array
             zh = int(np.round(h / zoom_factor))
             zw = int(np.round(w / zoom_factor))
-            zd = int(np.round(d / zoom_factor))
+            # zd = int(np.ceil(d / zoom_factor))
             top = (h - zh) // 2
             left = (w - zw) // 2
-            inside = (d - zd) // 2
+            # inside = (d - zd) // 2
 
-            out = snd.zoom(img[top:top + zh, left:left + zw, inside:inside + zd], zoom_tuple, order=interpolation_order)
+            # print(f"apply_zoom: {zh=}, {zw=}, {top=}, {left=}")
+
+            out = snd.zoom(img[top:top + zh, left:left + zw, ...], zoom_tuple, order=interpolation_order)
+
+            # print(f"apply_zoom: {out.shape=}")
 
             # `out` might still be slightly larger than `_img` due to rounding, so
             # trim off any extra pixels at the edges
             trim_top = max((out.shape[0] - h) // 2, 0)
             trim_left = max((out.shape[1] - w) // 2, 0)
-            trim_inside = max((out.shape[2] - d) // 2, 0)
-            out = out[trim_top:trim_top + h, trim_left:trim_left + w, trim_inside:trim_inside + d]
+            # trim_inside = max((out.shape[2] - d) // 2, 0)
+
+            # print(f"apply_zoom: {trim_top=}, {trim_left=}")
+
+            out = out[trim_top:trim_top + h, trim_left:trim_left + w, ...]
+
+            # print(f"apply_zoom: {out.shape=}")
 
         return out
 

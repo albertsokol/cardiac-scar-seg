@@ -25,10 +25,8 @@ def load_predictor(predict_config):
             p = Predictor3D(**predict_config, train_config=train_config)
         elif train_config['model'] in ['UNet3DShallow', 'VNetShallow']:
             p = Predictor3DShallow(**predict_config, train_config=train_config)
-        elif train_config['model'] in ['CascadedUNet3DShallowB']:
-            p = Predictor3DCascadedShallowB(**predict_config, train_config=train_config)
-        elif train_config['model'] in ['CascadedUNet3DShallowC']:
-            p = Predictor3DCascadedShallowC(**predict_config, train_config=train_config)
+        elif train_config['model'] in ['UNet3DFrozenDepth']:
+            p = Predictor3DFrozenDepth(**predict_config, train_config=train_config)
         else:
             p = Predictor2D(**predict_config, train_config=train_config)
     elif isinstance(predict_config['model_path'], list):
@@ -134,6 +132,9 @@ class __Predictor:
 
         # Iterate over all the classes, getting the dice score
         for i in range(length):
+            # if i == 3 and np.sum(y_true[..., i]) == 0. and np.sum(y_pred[..., i]) == 0.:
+            #     dices[i] = "100.0"
+            # else:
             numerator = 2 * np.sum(y_true[..., i] * y_pred[..., i]) + 1e-7
             denominator = np.sum(y_true[..., i]) + np.sum(y_pred[..., i]) + 1e-7
             dices[i] = numerator / denominator
@@ -182,7 +183,7 @@ class __Predictor:
         """
         Should show the label vs. prediction, label vs. image and prediction vs. image in a single scrollable view.
         """
-        self.reader.scroll_view(np.concatenate((label, pred_label)), plane=plane)
+        self.reader.scroll_view(np.concatenate((image * 7., label, pred_label)), plane=plane)
 
     @staticmethod
     def __check_image_label_paths(image_paths, image_folder, label_paths, label_folder):
@@ -538,6 +539,25 @@ class Predictor3DShallow(__Predictor):
             return image, label, pred_label
 
 
+class Predictor3DFrozenDepth(Predictor3D):
+    def _prepare_image_label(self, image, label, suffix):
+        """Get image and label ready for down-stream predictions."""
+        if self.use_cropper:
+            if not self.cascade:
+                image = self.cropper.crop(image, suffix)
+            label = self.cropper.crop(label, suffix)
+
+        # Set to the correct dimensions
+        if image.shape[:2] != self.image_size[:2]:
+            image = self.reader.resize(image, self.image_size[:2] + [image.shape[-1]])
+        if label.shape[:2] != self.image_size[:2]:
+            label = self.reader.resize(label, self.image_size[:2] + [image.shape[-1]], interpolation_order=0)
+
+        image = self.reader.normalize(image)
+
+        return image, label
+
+
 class PredictorNode:
     """Node that forms part of the PredictorStaggeredCascaded tree."""
     def __init__(self, model_path, combine_labels, keep_labels=None):
@@ -730,118 +750,6 @@ class PredictorStaggeredCascaded:
 
         if self.post_process:
             pred_label = self.post_process_label(pred_label)
-
-        return image, label, pred_label
-
-
-class Predictor3DCascadedShallowB(Predictor3DShallow):
-    def __init__(self, data_path, dataset, model_path, train_config, post_process):
-        super().__init__(data_path, dataset, model_path, train_config, post_process)
-
-    def predict(self, fname=None, display=False, apply_combine=True, return_fname=False):
-        images, labels, fname = self.load_image_label(fname)
-        image = self.construct_slice_wise(images, len(images), self.image_size[-1])
-        label = self.construct_slice_wise(labels, len(images), self.image_size[-1])
-
-        # Get the multiple outputs from the model
-        pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=[
-            self.model.get_layer("conv3d_14").output,
-            self.model.get_layer("conv3d_29").output,
-            self.model.get_layer("conv3d_44").output,
-        ])
-
-        pred_logits_root = []
-        pred_logits_scar = []
-        pred_logits_pap = []
-
-        for x in images:
-            predictions = pred_model.predict(x[np.newaxis, ...])
-
-            pred_logits_root += [np.squeeze(predictions[0], axis=0)]
-            pred_logits_scar += [np.squeeze(predictions[1], axis=0)]
-            pred_logits_pap += [np.squeeze(predictions[2], axis=0)]
-
-        pred_label_root = self.aggregate_slice_logits(pred_logits_root, len(images), self.image_size[-1])
-        pred_label_scar = self.aggregate_slice_logits(pred_logits_scar, len(images), self.image_size[-1])
-        pred_label_pap = self.aggregate_slice_logits(pred_logits_pap, len(images), self.image_size[-1])
-
-        pred_label = np.zeros(pred_label_root.shape)
-        pred_label = np.where(np.equal(pred_label_root, 1), 1, pred_label)  # l lumen
-        pred_label = np.where(np.equal(pred_label_root, 2), 2, pred_label)  # l myo
-        pred_label = np.where(np.equal(pred_label_root, 3), 4, pred_label)  # r lumen
-        pred_label = np.where(np.equal(pred_label_root, 4), 5, pred_label)  # r lumen
-        pred_label = np.where(np.equal(pred_label_root, 5), 7, pred_label)  # aorta
-        pred_label = np.where(np.equal(pred_label_scar, 1), 3, pred_label)  # scar
-        pred_label = np.where(np.equal(pred_label_pap, 1), 6, pred_label)  # pap
-
-        if self.post_process:
-            pred_label = self.post_process_label(pred_label)
-
-        if display:
-            print(self.calculate_dice(label, pred_label))
-            self.display(image, label, pred_label)
-
-        return image, label, pred_label
-
-
-class Predictor3DCascadedShallowC(Predictor3DShallow):
-    def __init__(self, data_path, dataset, model_path, train_config, post_process):
-        super().__init__(data_path, dataset, model_path, train_config, post_process)
-
-    def predict(self, fname=None, display=False, apply_combine=True, return_fname=False):
-        images, labels, fname = self.load_image_label(fname)
-        image = self.construct_slice_wise(images, len(images), self.image_size[-1])
-        label = self.construct_slice_wise(labels, len(images), self.image_size[-1])
-
-        # Get the multiple outputs from the model
-        pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=[
-            self.model.get_layer("conv3d_14").output,  # root out
-            self.model.get_layer("conv3d_29").output,  # l myo out
-            self.model.get_layer("conv3d_44").output,  # l lumen out
-            self.model.get_layer("conv3d_59").output,  # r lumen myo out
-            self.model.get_layer("conv3d_74").output,  # scar out
-            self.model.get_layer("conv3d_89").output,  # pap out
-        ])
-
-        pred_logits_root = []
-        pred_logits_l_myo = []
-        pred_logits_l_lumen = []
-        pred_logits_r_lumen_myo = []
-        pred_logits_scar = []
-        pred_logits_pap = []
-
-        for x in images:
-            predictions = pred_model.predict(x[np.newaxis, ...])
-
-            pred_logits_root += [np.squeeze(predictions[0], axis=0)]
-            pred_logits_l_myo += [np.squeeze(predictions[1], axis=0)]
-            pred_logits_l_lumen += [np.squeeze(predictions[2], axis=0)]
-            pred_logits_r_lumen_myo += [np.squeeze(predictions[3], axis=0)]
-            pred_logits_scar += [np.squeeze(predictions[4], axis=0)]
-            pred_logits_pap += [np.squeeze(predictions[5], axis=0)]
-
-        pred_label_root = self.aggregate_slice_logits(pred_logits_root, len(images), self.image_size[-1])
-        pred_label_l_myo = self.aggregate_slice_logits(pred_logits_l_myo, len(images), self.image_size[-1])
-        pred_label_l_lumen = self.aggregate_slice_logits(pred_logits_l_lumen, len(images), self.image_size[-1])
-        pred_label_r_lumen_myo = self.aggregate_slice_logits(pred_logits_r_lumen_myo, len(images), self.image_size[-1])
-        pred_label_scar = self.aggregate_slice_logits(pred_logits_scar, len(images), self.image_size[-1])
-        pred_label_pap = self.aggregate_slice_logits(pred_logits_pap, len(images), self.image_size[-1])
-
-        pred_label = np.zeros(pred_label_root.shape)
-        pred_label = np.where(np.equal(pred_label_root, 3), 7, pred_label)  # aorta
-        pred_label = np.where(np.equal(pred_label_l_myo, 1), 2, pred_label)  # l myo
-        pred_label = np.where(np.equal(pred_label_l_lumen, 1), 1, pred_label)  # l myo
-        pred_label = np.where(np.equal(pred_label_r_lumen_myo, 1), 4, pred_label)  # r lumen
-        pred_label = np.where(np.equal(pred_label_r_lumen_myo, 2), 5, pred_label)  # r myo
-        pred_label = np.where(np.equal(pred_label_scar, 1), 3, pred_label)  # scar
-        pred_label = np.where(np.equal(pred_label_pap, 1), 6, pred_label)  # pap
-
-        if self.post_process:
-            pred_label = self.post_process_label(pred_label)
-
-        if display:
-            print(self.calculate_dice(label, pred_label))
-            self.display(image, label, pred_label)
 
         return image, label, pred_label
 

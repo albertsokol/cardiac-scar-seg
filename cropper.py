@@ -154,113 +154,224 @@ class Cropper:
 
         return out
 
-    def crop(self, f, fname):
+    def __crop2d_wide(self, f, top, left, bottom, right, return_cut_dims=False):
+        """Crop for a wide 2D bounding box (w > h)."""
+        w = right - left
+        h = bottom - top
+
+        # Find the amount to add to top and bottom; if odd, will need to add an extra px
+        if (w - h) % 2 != 0:
+            add_top = ((w - h) // 2) + 1
+            add_bottom = (w - h) // 2
+        else:
+            add_top = (w - h) // 2
+            add_bottom = (w - h) // 2
+
+        # Take the slice of the image
+        cut_dims = {
+            "top": max(top - self.pad - add_top, 0),
+            "bottom": min(bottom + self.pad + add_bottom, f.shape[0]),
+            "left": max(left - self.pad, 0),
+            "right": min(right + self.pad, f.shape[1]),
+        }
+        cut = f[cut_dims["top"]:cut_dims["bottom"], cut_dims["left"]:cut_dims["right"], ...]
+
+        # Need to check if going out of bounds
+        if cut.shape[0] != cut.shape[1]:
+            if top - self.pad - add_top < 0:
+                # Add some zero padding to the top to fill up the gap
+                bleed = (top - self.pad - add_top) * -1
+                padding = np.zeros([bleed, cut.shape[1]])
+                cut = np.concatenate((padding, cut), axis=0)
+            if left - self.pad < 0:
+                # Add some zero padding to the left
+                bleed = (left - self.pad) * -1
+                padding = np.zeros([cut.shape[0], bleed])
+                cut = np.concatenate((padding, cut), axis=1)
+            if bottom + self.pad + add_bottom > f.shape[0]:
+                # Add some zero padding to the bottom
+                bleed = (f.shape[0] - bottom - self.pad - add_bottom) * -1
+                padding = np.zeros([bleed, cut.shape[1]])
+                cut = np.concatenate((cut, padding), axis=0)
+            if right + self.pad > f.shape[1]:
+                # Add some zero padding to the right
+                bleed = (f.shape[1] - right - self.pad) * -1
+                padding = np.zeros([cut.shape[0], bleed])
+                cut = np.concatenate((cut, padding), axis=1)
+
+        if return_cut_dims:
+            return cut, cut_dims
+        else:
+            return cut
+
+    def __crop2d_tall(self, f, top, left, bottom, right, return_cut_dims=False):
+        """Crop for a tall 2D bounding box (h > w)."""
+        w = right - left
+        h = bottom - top
+
+        if (h - w) % 2 != 0:
+            add_left = ((h - w) // 2) + 1
+            add_right = (h - w) // 2
+        else:
+            add_left = (h - w) // 2
+            add_right = (h - w) // 2
+
+        cut_dims = {
+            "top": max(top - self.pad, 0),
+            "bottom": min(bottom + self.pad, f.shape[0]),
+            "left": max(left - self.pad - add_left, 0),
+            "right": min(right + self.pad + add_right, f.shape[1]),
+        }
+        cut = f[cut_dims["top"]:cut_dims["bottom"], cut_dims["left"]:cut_dims["right"], ...]
+
+        # Need to check if going out of bounds
+        if cut.shape[0] != cut.shape[1]:
+            if top - self.pad < 0:
+                # Add some zero padding to the top to fill up the gap
+                bleed = (top - self.pad) * -1
+                padding = np.zeros([bleed, cut.shape[1]])
+                cut = np.concatenate((padding, cut), axis=0)
+            if left - self.pad - add_left < 0:
+                # Add some zero padding to the left
+                bleed = (left - self.pad - add_left) * -1
+                padding = np.zeros([cut.shape[0], bleed])
+                cut = np.concatenate((padding, cut), axis=1)
+            if bottom + self.pad > f.shape[0]:
+                # Add some zero padding to the bottom
+                bleed = (f.shape[0] - bottom - self.pad) * -1
+                padding = np.zeros([bleed, cut.shape[1]])
+                cut = np.concatenate((cut, padding), axis=0)
+            if right + self.pad + add_right > f.shape[1]:
+                # Add some zero padding to the right
+                bleed = (f.shape[1] - right - self.pad - add_right) * -1
+                padding = np.zeros([cut.shape[0], bleed])
+                cut = np.concatenate((cut, padding), axis=1)
+
+        if return_cut_dims:
+            return cut, cut_dims
+        else:
+            return cut
+
+    def __crop3d_wide(self, f, top, left, bottom, right, return_cut_dims=False):
+        """Crop for a wide 3D bounding box (w > h)."""
+        w = right - left
+        h = bottom - top
+
+        # Find the amount to add to top and bottom; if odd, will need to add an extra px
+        if (w - h) % 2 != 0:
+            add_top = ((w - h) // 2) + 1
+            add_bottom = (w - h) // 2
+        else:
+            add_top = (w - h) // 2
+            add_bottom = (w - h) // 2
+
+        # Take the slice of the image
+        cut_dims = {
+            "top": max(top - self.pad - add_top, 0),
+            "bottom": min(bottom + self.pad + add_bottom, f.shape[0]),
+            "left": max(left - self.pad, 0),
+            "right": min(right + self.pad, f.shape[1]),
+        }
+        cut = f[cut_dims["top"]:cut_dims["bottom"], cut_dims["left"]:cut_dims["right"], ...]
+
+        # Need to check if going out of bounds
+        if cut.shape[0] != cut.shape[1]:
+            if top - self.pad - add_top < 0:
+                # Add some zero padding to the top to fill up the gap
+                bleed = (top - self.pad - add_top) * -1
+                padding = np.zeros([bleed, cut.shape[1], f.shape[2]])
+                cut = np.concatenate((padding, cut), axis=0)
+            if left - self.pad < 0:
+                # Add some zero padding to the left
+                bleed = (left - self.pad) * -1
+                padding = np.zeros([cut.shape[0], bleed, f.shape[2]])
+                cut = np.concatenate((padding, cut), axis=1)
+            if bottom + self.pad + add_bottom > f.shape[0]:
+                # Add some zero padding to the bottom
+                bleed = (f.shape[0] - bottom - self.pad - add_bottom) * -1
+                padding = np.zeros([bleed, cut.shape[1], f.shape[2]])
+                cut = np.concatenate((cut, padding), axis=0)
+            if right + self.pad > f.shape[1]:
+                # Add some zero padding to the right
+                bleed = (f.shape[1] - right - self.pad) * -1
+                padding = np.zeros([cut.shape[0], bleed, f.shape[2]])
+                cut = np.concatenate((cut, padding), axis=1)
+
+        if return_cut_dims:
+            return cut, cut_dims
+        else:
+            return cut
+
+    def __crop3d_tall(self, f, top, left, bottom, right, return_cut_dims=False):
+        """Crop for a tall 3D bounding box (h > w)."""
+        w = right - left
+        h = bottom - top
+
+        if (h - w) % 2 != 0:
+            add_left = ((h - w) // 2) + 1
+            add_right = (h - w) // 2
+        else:
+            add_left = (h - w) // 2
+            add_right = (h - w) // 2
+
+        cut_dims = {
+            "top": max(top - self.pad, 0),
+            "bottom": min(bottom + self.pad, f.shape[0]),
+            "left": max(left - self.pad - add_left, 0),
+            "right": min(right + self.pad + add_right, f.shape[1]),
+        }
+        cut = f[cut_dims["top"]:cut_dims["bottom"], cut_dims["left"]:cut_dims["right"], ...]
+
+        # Need to check if going out of bounds
+        if cut.shape[0] != cut.shape[1]:
+            if top - self.pad < 0:
+                # Add some zero padding to the top to fill up the gap
+                bleed = (top - self.pad) * -1
+                padding = np.zeros([bleed, cut.shape[1], f.shape[2]])
+                cut = np.concatenate((padding, cut), axis=0)
+            if left - self.pad - add_left < 0:
+                # Add some zero padding to the left
+                bleed = (left - self.pad - add_left) * -1
+                padding = np.zeros([cut.shape[0], bleed, f.shape[2]])
+                cut = np.concatenate((padding, cut), axis=1)
+            if bottom + self.pad > f.shape[0]:
+                # Add some zero padding to the bottom
+                bleed = (f.shape[0] - bottom - self.pad) * -1
+                padding = np.zeros([bleed, cut.shape[1], f.shape[2]])
+                cut = np.concatenate((cut, padding), axis=0)
+            if right + self.pad + add_right > f.shape[1]:
+                # Add some zero padding to the right
+                bleed = (f.shape[1] - right - self.pad - add_right) * -1
+                padding = np.zeros([cut.shape[0], bleed, f.shape[2]])
+                cut = np.concatenate((cut, padding), axis=1)
+
+        if return_cut_dims:
+            return cut, cut_dims
+        else:
+            return cut
+
+    def crop(self, f, fname, return_cut_dims=False):
         """Crop the given image or label file, using the file name to get the bounding box info."""
         # Get the bounding box
         bbox = self.bboxes[fname.split('/')[-1].split('.')[0][:12]]
         top, left, bottom, right = [int(x) for x in (bbox['top'], bbox['left'], bbox['bottom'], bbox['right'])]
-        # print(f'top: {top}, left: {left}, bottom: {bottom}, right: {right}')
 
-        # Find the longest dimension (width or height)
         w = right - left
         h = bottom - top
-        longest = max(w, h)
 
-        if w == longest:
-            # Find the amount to add to top and bottom; if odd, will need to add an extra px
-            if (w - h) % 2 != 0:
-                add_top = ((w - h) // 2) + 1
-                add_bottom = (w - h) // 2
+        if len(f.shape) > 2:
+            if w >= h:
+                return self.__crop3d_wide(f, top, left, bottom, right, return_cut_dims)
             else:
-                add_top = (w - h) // 2
-                add_bottom = (w - h) // 2
-            # Take the slice of the image
-            # print(f'add_top: {add_top}, add_bottom: {add_bottom}')
-            cut = f[
-                  max(top - self.pad - add_top, 0):min(bottom + self.pad + add_bottom, f.shape[0]),
-                  max(left - self.pad, 0):min(right + self.pad, f.shape[1]),
-                  ...
-                  ]
-            # Need to check if going out of bounds
-            if cut.shape[0] != cut.shape[1]:
-                if top - self.pad - add_top < 0:
-                    # Add some zero padding to the top to fill up the gap
-                    bleed = (top - self.pad - add_top) * -1
-                    if len(f.shape) > 2:
-                        padding = np.zeros([bleed, cut.shape[1], f.shape[2]])
-                    else:
-                        padding = np.zeros([bleed, cut.shape[1]])
-                    cut = np.concatenate((padding, cut), axis=0)
-                if left - self.pad < 0:
-                    # Add some zero padding to the left
-                    bleed = (left - self.pad) * -1
-                    if len(f.shape) > 2:
-                        padding = np.zeros([cut.shape[0], bleed, f.shape[2]])
-                    else:
-                        padding = np.zeros([cut.shape[0], bleed])
-                    cut = np.concatenate((padding, cut), axis=1)
-                if bottom + self.pad + add_bottom > f.shape[0]:
-                    # Add some zero padding to the bottom
-                    bleed = (f.shape[0] - bottom - self.pad - add_bottom) * -1
-                    if len(f.shape) > 2:
-                        padding = np.zeros([bleed, cut.shape[1], f.shape[2]])
-                    else:
-                        padding = np.zeros([bleed, cut.shape[1]])
-                    cut = np.concatenate((cut, padding), axis=0)
-                if right + self.pad > f.shape[1]:
-                    # Add some zero padding to the right
-                    bleed = (f.shape[1] - right - self.pad) * -1
-                    if len(f.shape) > 2:
-                        padding = np.zeros([cut.shape[0], bleed, f.shape[2]])
-                    else:
-                        padding = np.zeros([cut.shape[0], bleed])
-                    cut = np.concatenate((cut, padding), axis=1)
+                return self.__crop3d_tall(f, top, left, bottom, right, return_cut_dims)
         else:
-            if (h - w) % 2 != 0:
-                add_left = ((h - w) // 2) + 1
-                add_right = (h - w) // 2
+            if w >= h:
+                return self.__crop2d_wide(f, top, left, bottom, right, return_cut_dims)
             else:
-                add_left = (h - w) // 2
-                add_right = (h - w) // 2
-            # print(f'add_left: {add_left}, add_right: {add_right}')
-            cut = f[
-                  max(top - self.pad, 0):min(bottom + self.pad, f.shape[0]),
-                  max(left - self.pad - add_left, 0):min(right + self.pad + add_right, f.shape[1]),
-                  ...
-                  ]
-            # Need to check if going out of bounds
-            if cut.shape[0] != cut.shape[1]:
-                if top - self.pad < 0:
-                    # Add some zero padding to the top to fill up the gap
-                    bleed = (top - self.pad) * -1
-                    if len(f.shape) > 2:
-                        padding = np.zeros([bleed, cut.shape[1], f.shape[2]])
-                    else:
-                        padding = np.zeros([bleed, cut.shape[1]])
-                    cut = np.concatenate((padding, cut), axis=0)
-                if left - self.pad - add_left < 0:
-                    # Add some zero padding to the left
-                    bleed = (left - self.pad - add_left) * -1
-                    if len(f.shape) > 2:
-                        padding = np.zeros([cut.shape[0], bleed, f.shape[2]])
-                    else:
-                        padding = np.zeros([cut.shape[0], bleed])
-                    cut = np.concatenate((padding, cut), axis=1)
-                if bottom + self.pad > f.shape[0]:
-                    # Add some zero padding to the bottom
-                    bleed = (f.shape[0] - bottom - self.pad) * -1
-                    if len(f.shape) > 2:
-                        padding = np.zeros([bleed, cut.shape[1], f.shape[2]])
-                    else:
-                        padding = np.zeros([bleed, cut.shape[1]])
-                    cut = np.concatenate((cut, padding), axis=0)
-                if right + self.pad + add_right > f.shape[1]:
-                    # Add some zero padding to the right
-                    bleed = (f.shape[1] - right - self.pad - add_right) * -1
-                    if len(f.shape) > 2:
-                        padding = np.zeros([cut.shape[0], bleed, f.shape[2]])
-                    else:
-                        padding = np.zeros([cut.shape[0], bleed])
-                    cut = np.concatenate((cut, padding), axis=1)
+                return self.__crop2d_tall(f, top, left, bottom, right, return_cut_dims)
 
-        return cut
+    def reverse_crop(self, shape, fname):
+        """Given a filename and shape, return the size of the cut that formed that cropped input."""
+        dummy = np.zeros(shape)
+        cut, cut_dims = self.crop(dummy, fname, return_cut_dims=True)
+        return cut.shape, cut_dims

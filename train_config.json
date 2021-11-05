@@ -1,20 +1,20 @@
 {
-    "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3D_tr5_discard_0_rotate_8",
+    "model_save_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3D_interpolated_depth",
     "data_path": "/media/y4tsu/ml-fast/cmr",
-    "model": "UNet3DShallow",
-    "plane": "transverse",
+    "model": "UNet3D",
+    "plane": "",
     "num_epochs": 100,
-    "batch_size": 4,
+    "batch_size": 2,
     "image_size": [
         144,
         144,
-        3
+        16
     ],
     "use_cropper": "manual",
     "learning_rate": 0.05,
     "lr_decay": 0.35,
     "warmup": false,
-    "loss_fn": "dice",
+    "loss_fn": "weighted softmax dice",
     "quality_weighting": {
         "0": 0.0,
         "1": 1.0,

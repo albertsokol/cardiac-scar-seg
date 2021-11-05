@@ -1,14 +1,17 @@
 """Used for finding the class-wise and average Dice scores of a model on a dataset (e.g., validation or test)."""
 
+import csv
 import os
 import json
 import time
 
+import nibabel as nib
 import numpy as np
 from tqdm import tqdm
 
 from predict import load_predictor
 from util import PColour
+from readers import NIIReader
 
 
 if __name__ == '__main__':
@@ -21,11 +24,14 @@ if __name__ == '__main__':
     # Load the correct Predictor class for the given model type
     p = load_predictor(predict_config)
     plane = p.plane
+    cropper = p.cropper
 
-    if p.model_name in ['UNet3D', 'VNet']:
+    print(cropper.bboxes)
+
+    if p.model_name in ['UNet3D', 'VNet', 'UNet3DFrozenDepth']:
         dims = '3D'
         plane = ''
-    elif p.model_name in ['UNet3DShallow', 'VNetShallow', 'CascadedUNet3DShallowB', 'CascadedUNet3DShallowC']:
+    elif p.model_name in ['UNet3DShallow', 'VNetShallow']:
         dims = '3DShallow'
     else:
         dims = '2D'
@@ -42,10 +48,23 @@ if __name__ == '__main__':
         class_wise_dices = np.zeros([len(p.labels_dict)])
 
     # Run the model in predictions mode and get the dice scores for each scan
+    save_dices = [["file", "bg", "lv lumen", "lv myo", "scar", "rv lumen", "rv myo", "pap", "aorta"]]
+
     for root in tqdm(roots):
         image, label, pred_label = p.predict(fname=root, display=False)
         dices += p.calculate_dice(label, pred_label)
-        class_wise_dices += p.calculate_class_wise_dice(label, pred_label)
+        curr_dices = p.calculate_class_wise_dice(label, pred_label)
+        class_wise_dices += curr_dices
+
+        save_dices += [[root.split('/')[-1], *curr_dices.tolist()]]
+
+    # exit()
+    print(save_dices)
+
+    fold = 1
+    with open(f'dice_res/3D_frozen_dices_plus_certainty_{fold}.csv', 'w') as f:
+        writer = csv.writer(f)
+        writer.writerows(save_dices)
 
     # Print a report with the averages of those dice scores
     print(f'AVG DICE: {dices / len(roots)}')
