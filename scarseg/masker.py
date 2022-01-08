@@ -9,6 +9,7 @@ from scarseg.util import PColour
 
 class Masker:
     """Class for masking inputs based on the prediction of a previously trained model."""
+
     def __init__(self, model_path, keep_labels, data_path, dataset, folder, plane=""):
         """
         Initializer for Masker.
@@ -32,11 +33,11 @@ class Masker:
         self.plane = plane
 
         # Create the folder that will store the masks
-        if not os.path.exists(os.path.join(folder, 'mask')):
-            os.mkdir(os.path.join(folder, 'mask'))
-        if not os.path.exists(os.path.join(folder, 'mask', dataset)):
-            os.mkdir(os.path.join(folder, 'mask', dataset))
-        self.mask_folder = os.path.join(folder, 'mask', dataset)
+        if not os.path.exists(os.path.join(folder, "mask")):
+            os.mkdir(os.path.join(folder, "mask"))
+        if not os.path.exists(os.path.join(folder, "mask", dataset)):
+            os.mkdir(os.path.join(folder, "mask", dataset))
+        self.mask_folder = os.path.join(folder, "mask", dataset)
 
     def create_fname_folder(self, fname):
         """Create folder to store masks for the current fname."""
@@ -52,45 +53,61 @@ class Masker:
         assert self.plane, f"plane must be given for 2D masking but got '{self.plane}'"
 
         # Save input array images for the correct plane
-        if self.plane == 'coronal':
+        if self.plane == "coronal":
             for j in range(f.shape[0]):
-                np.save(os.path.join(self.mask_folder, fname, f'{fname}_{j:03}_image'), f[j, :, :])
-        elif self.plane == 'sagittal':
+                np.save(
+                    os.path.join(self.mask_folder, fname, f"{fname}_{j:03}_image"),
+                    f[j, :, :],
+                )
+        elif self.plane == "sagittal":
             for j in range(f.shape[1]):
-                np.save(os.path.join(self.mask_folder, fname, f'{fname}_{j:03}_image'), f[:, j, :])
-        elif self.plane == 'transverse':
+                np.save(
+                    os.path.join(self.mask_folder, fname, f"{fname}_{j:03}_image"),
+                    f[:, j, :],
+                )
+        elif self.plane == "transverse":
             for j in range(f.shape[2]):
-                np.save(os.path.join(self.mask_folder, fname, f'{fname}_{j:03}_image'), f[:, :, j])
+                np.save(
+                    os.path.join(self.mask_folder, fname, f"{fname}_{j:03}_image"),
+                    f[:, :, j],
+                )
 
     def save_3d_shallow_mask(self, f, fname, depth):
         """Save masked image in 3D shallow with slice thickness of depth."""
         self.create_fname_folder(fname)
         for j in range(f.shape[2] - depth + 1):
-            np.save(os.path.join(self.mask_folder, fname, f'{fname}_{j:03}_image'), f[:, :, j:j + depth])
+            np.save(
+                os.path.join(self.mask_folder, fname, f"{fname}_{j:03}_image"),
+                f[:, :, j : j + depth],
+            )
 
     def save_3d_mask(self, f, fname):
         """Save masked image in 3D."""
         self.create_fname_folder(fname)
-        np.save(os.path.join(self.mask_folder, fname, f'{fname}_SAX'), f)
+        np.save(os.path.join(self.mask_folder, fname, f"{fname}_SAX"), f)
 
     def create_masks(self):
         """Create masks for the selected dataset of the Masker, e.g., training or validation."""
         if len(os.listdir(self.mask_folder)) != 0:
-            print(f"{PColour.OKCYAN}Using existing masks at {self.mask_folder} therefore new masking was skipped, if"
-                  f" this is incorrect then delete the files at {self.mask_folder} to re-generate. {PColour.ENDC}")
+            print(
+                f"{PColour.OKCYAN}Using existing masks at {self.mask_folder} therefore new masking was skipped, if"
+                f" this is incorrect then delete the files at {self.mask_folder} to re-generate. {PColour.ENDC}"
+            )
             return
 
         from predict import load_predictor
 
-        print(f'Predicting masks using model at {self.model_path} for {self.dataset} data ... ')
-        roots = sorted(os.listdir(os.path.join(self.data_path, '3D', self.dataset)))
+        print(
+            f"Predicting masks using model at {self.model_path} for {self.dataset} data ... "
+        )
+        roots = sorted(os.listdir(os.path.join(self.data_path, "3D", self.dataset)))
 
         # Set up the correct config for the predictor model
         predict_config = {
-            'model_path': self.model_path,
-            'data_path': self.data_path,
-            'dataset': self.dataset,
-            'post_process': False,
+            "model_path": self.model_path,
+            "data_path": self.data_path,
+            "dataset": self.dataset,
+            "post_process": False,
         }
 
         # Load the masking model as a Predictor object
@@ -113,9 +130,9 @@ class Masker:
             # Mask the image using the predicted label
             masked_image = np.where(np.isin(pred_label, self.keep_labels), image, 0)
 
-            if p.dimensionality == '2D':
+            if p.dimensionality == "2D":
                 self.save_2d_mask(masked_image, root)
-            elif p.dimensionality == '3DShallow':
+            elif p.dimensionality == "3DShallow":
                 self.save_3d_shallow_mask(masked_image, root, p.image_size[-1])
             else:
                 self.save_3d_mask(masked_image, root)

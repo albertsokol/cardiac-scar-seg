@@ -9,6 +9,7 @@ from scarseg.readers import NIIReader
 
 class Cropper:
     """Class for cropping images and labels."""
+
     def __init__(self, data_path, dataset, mode, pad=8):
         """Initializer for Cropper."""
         self.data_path = data_path
@@ -36,7 +37,9 @@ class Cropper:
                 # If the slice is completely background, then skip it
                 continue
             left = np.where(np.any(curr == 1, axis=0))[0][0]
-            bottom = curr.shape[0] - np.where(np.any(curr[::-1, ...] == 1, axis=1))[0][0]
+            bottom = (
+                curr.shape[0] - np.where(np.any(curr[::-1, ...] == 1, axis=1))[0][0]
+            )
             right = curr.shape[1] - np.where(np.any(curr[..., ::-1] == 1, axis=0))[0][0]
             if top < bbox[0]:
                 bbox[0] = top
@@ -68,22 +71,24 @@ class Cropper:
 
     def _get_manual_bboxes(self):
         """Load the manual segmentation masks from 3D images to get bounding boxes on the fly."""
-        print(f'Loading bboxes from manual segmentations for {self.dataset} data ... ')
+        print(f"Loading bboxes from manual segmentations for {self.dataset} data ... ")
         reader = NIIReader()
-        base_folder = os.path.join(self.data_path, '3D', self.dataset)
+        base_folder = os.path.join(self.data_path, "3D", self.dataset)
         roots = sorted(os.listdir(base_folder))
         out = {}
 
         for i, root in enumerate(tqdm(roots)):
-            label = np.squeeze(reader.read(os.path.join(base_folder, root, f'{root}_SAX_mask2.nii.gz')))
+            label = np.squeeze(
+                reader.read(os.path.join(base_folder, root, f"{root}_SAX_mask2.nii.gz"))
+            )
             binary_label = np.where(np.equal(label, 0), 0, 1)
             bbox = self.__find_bbox(binary_label)
 
             out[root] = {
-                'top': bbox[0],
-                'left': bbox[1],
-                'bottom': bbox[2],
-                'right': bbox[3],
+                "top": bbox[0],
+                "left": bbox[1],
+                "bottom": bbox[2],
+                "right": bbox[3],
             }
 
         return out
@@ -92,18 +97,20 @@ class Cropper:
         """Run the segmentation model to get bounding boxes for all the images in the dataset."""
         from predict import load_predictor
 
-        print(f'Predicting bboxes using automatic cropper model at {model_path} for {self.dataset} data ... ')
+        print(
+            f"Predicting bboxes using automatic cropper model at {model_path} for {self.dataset} data ... "
+        )
         reader = NIIReader()
-        base_folder = os.path.join(self.data_path, '3D', self.dataset)
+        base_folder = os.path.join(self.data_path, "3D", self.dataset)
         roots = sorted(os.listdir(base_folder))
         out = {}
 
         # Set up the correct config for the predictor model
         predict_config = {
-            'model_path': model_path,
-            'data_path': self.data_path,
-            'dataset': self.dataset,
-            'post_process': False
+            "model_path": model_path,
+            "data_path": self.data_path,
+            "dataset": self.dataset,
+            "post_process": False,
         }
 
         # Load the cropper model as a Predictor object
@@ -121,7 +128,9 @@ class Cropper:
                 raise ValueError(f"Unable to find the correct path for image {root}")
 
             image_size = reader.read(
-                os.path.join(self.data_path, '3D', self.dataset, f'{root}/{root}_SAX.nii.gz')
+                os.path.join(
+                    self.data_path, "3D", self.dataset, f"{root}/{root}_SAX.nii.gz"
+                )
             ).shape
 
             _, label, pred_label = p.predict(fname, display=False)
@@ -137,7 +146,7 @@ class Cropper:
                     new_pred_label[..., j] = cv2.resize(
                         curr,
                         tuple(reversed(image_size[:2])),
-                        interpolation=cv2.INTER_NEAREST
+                        interpolation=cv2.INTER_NEAREST,
                     )
                 pred_label = new_pred_label
 
@@ -145,10 +154,10 @@ class Cropper:
             bbox = self.__find_bbox(pred_label)
 
             out[root] = {
-                'top': bbox[0],
-                'left': bbox[1],
-                'bottom': bbox[2],
-                'right': bbox[3],
+                "top": bbox[0],
+                "left": bbox[1],
+                "bottom": bbox[2],
+                "right": bbox[3],
             }
 
         return out
@@ -173,7 +182,11 @@ class Cropper:
             "left": max(left - self.pad, 0),
             "right": min(right + self.pad, f.shape[1]),
         }
-        cut = f[cut_dims["top"]:cut_dims["bottom"], cut_dims["left"]:cut_dims["right"], ...]
+        cut = f[
+            cut_dims["top"] : cut_dims["bottom"],
+            cut_dims["left"] : cut_dims["right"],
+            ...,
+        ]
 
         # Need to check if going out of bounds
         if cut.shape[0] != cut.shape[1]:
@@ -221,7 +234,11 @@ class Cropper:
             "left": max(left - self.pad - add_left, 0),
             "right": min(right + self.pad + add_right, f.shape[1]),
         }
-        cut = f[cut_dims["top"]:cut_dims["bottom"], cut_dims["left"]:cut_dims["right"], ...]
+        cut = f[
+            cut_dims["top"] : cut_dims["bottom"],
+            cut_dims["left"] : cut_dims["right"],
+            ...,
+        ]
 
         # Need to check if going out of bounds
         if cut.shape[0] != cut.shape[1]:
@@ -271,7 +288,11 @@ class Cropper:
             "left": max(left - self.pad, 0),
             "right": min(right + self.pad, f.shape[1]),
         }
-        cut = f[cut_dims["top"]:cut_dims["bottom"], cut_dims["left"]:cut_dims["right"], ...]
+        cut = f[
+            cut_dims["top"] : cut_dims["bottom"],
+            cut_dims["left"] : cut_dims["right"],
+            ...,
+        ]
 
         # Need to check if going out of bounds
         if cut.shape[0] != cut.shape[1]:
@@ -319,7 +340,11 @@ class Cropper:
             "left": max(left - self.pad - add_left, 0),
             "right": min(right + self.pad + add_right, f.shape[1]),
         }
-        cut = f[cut_dims["top"]:cut_dims["bottom"], cut_dims["left"]:cut_dims["right"], ...]
+        cut = f[
+            cut_dims["top"] : cut_dims["bottom"],
+            cut_dims["left"] : cut_dims["right"],
+            ...,
+        ]
 
         # Need to check if going out of bounds
         if cut.shape[0] != cut.shape[1]:
@@ -352,8 +377,10 @@ class Cropper:
     def crop(self, f, fname, return_cut_dims=False):
         """Crop the given image or label file, using the file name to get the bounding box info."""
         # Get the bounding box
-        bbox = self.bboxes[fname.split('/')[-1].split('.')[0][:12]]
-        top, left, bottom, right = [int(x) for x in (bbox['top'], bbox['left'], bbox['bottom'], bbox['right'])]
+        bbox = self.bboxes[fname.split("/")[-1].split(".")[0][:12]]
+        top, left, bottom, right = [
+            int(x) for x in (bbox["top"], bbox["left"], bbox["bottom"], bbox["right"])
+        ]
 
         w = right - left
         h = bottom - top

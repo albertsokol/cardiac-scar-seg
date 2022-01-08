@@ -34,14 +34,22 @@ class __Generator(Sequence, ABC):
         self.generic_data_path = generic_data_path  # root of all data folders
         self.data_path = data_path  # model and plane specific path
         self.dataset = dataset
-        self.image_fnames = [os.path.join(data_path, x, f'{x}_SAX.nii.gz') for x in sorted(os.listdir(data_path))]
-        self.label_fnames = [os.path.join(data_path, x, f'{x}_SAX_mask2.nii.gz') for x in sorted(os.listdir(data_path))]
-        assert len(self.image_fnames) == len(self.label_fnames), "Number of image files and label files did not match!"
+        self.image_fnames = [
+            os.path.join(data_path, x, f"{x}_SAX.nii.gz")
+            for x in sorted(os.listdir(data_path))
+        ]
+        self.label_fnames = [
+            os.path.join(data_path, x, f"{x}_SAX_mask2.nii.gz")
+            for x in sorted(os.listdir(data_path))
+        ]
+        assert len(self.image_fnames) == len(
+            self.label_fnames
+        ), "Number of image files and label files did not match!"
         self.index = np.arange(len(self.image_fnames))
 
         # Get the quality weightings dictionary
         if quality_weighting_scores:
-            with open('quality_scores.json', 'r') as f:
+            with open("quality_scores.json", "r") as f:
                 self.quality_weightings_dict = json.load(f)
         self.quality_weighting_scores = quality_weighting_scores
 
@@ -58,7 +66,11 @@ class __Generator(Sequence, ABC):
                 plane=plane,
             ).create_masks()
 
-        self.cropper = Cropper(generic_data_path, dataset, mode=use_cropper) if use_cropper else False
+        self.cropper = (
+            Cropper(generic_data_path, dataset, mode=use_cropper)
+            if use_cropper
+            else False
+        )
 
         # Model parameters
         self.batch_size = batch_size
@@ -83,9 +95,11 @@ class __Generator(Sequence, ABC):
 
     def __getitem__(self, index, weight_mode=False):
         # Create a list of batch_size numerical indices
-        indices = self.index[self.batch_size * index:self.batch_size * (index + 1)]
+        indices = self.index[self.batch_size * index : self.batch_size * (index + 1)]
         if indices.size == 0:
-            raise IndexError('Index not within possible range (0 to number of training steps)')
+            raise IndexError(
+                "Index not within possible range (0 to number of training steps)"
+            )
         # Generate the data
         x, y = self.get_data(indices, weight_mode)
         return x, y.astype(np.float32)
@@ -94,14 +108,21 @@ class __Generator(Sequence, ABC):
         # Initialise empty arrays for the training data and labels
         x = np.empty([self.batch_size, *self.image_size, 1], dtype=np.float32)
         if self.combine_labels:
-            y = np.empty([self.batch_size, *self.image_size, len(self.combine_labels)], dtype=np.int8)
+            y = np.empty(
+                [self.batch_size, *self.image_size, len(self.combine_labels)],
+                dtype=np.int8,
+            )
         else:
-            y = np.empty([self.batch_size, *self.image_size, len(self.labels)], dtype=np.int8)
+            y = np.empty(
+                [self.batch_size, *self.image_size, len(self.labels)], dtype=np.int8
+            )
 
         if len(self.image_size) == 2:
             quality_weightings = np.zeros([self.batch_size], dtype=np.float32)
         else:
-            quality_weightings = np.zeros([self.batch_size, self.image_size[-1]], dtype=np.float32)
+            quality_weightings = np.zeros(
+                [self.batch_size, self.image_size[-1]], dtype=np.float32
+            )
 
         # Get the training data
         for i, index in enumerate(batch_indices):
@@ -119,16 +140,19 @@ class __Generator(Sequence, ABC):
                 quality_weightings[i, ...] = self.get_quality_weightings(fname)
 
         if self.quality_weighting_scores:
-            return {'model_in': x, 'qw_in': quality_weightings}, {'qw_out': quality_weightings, 'm': y}
+            return {"model_in": x, "qw_in": quality_weightings}, {
+                "qw_out": quality_weightings,
+                "m": y,
+            }
         else:
             return x, y
 
     def read_file(self, index, fname_list):
-        """ Read the file at the given index of the given list. """
+        """Read the file at the given index of the given list."""
         return self.reader.read(fname_list[index]), fname_list[index]
 
     def prepare_img(self, img, fname):
-        """ Set the image to the correct size and dimensions for placement into the input tensor. """
+        """Set the image to the correct size and dimensions for placement into the input tensor."""
         # If cropping, then crop the image here
         if self.use_cropper and not self.cascade:
             img = self.cropper.crop(img, fname)
@@ -142,7 +166,7 @@ class __Generator(Sequence, ABC):
         return self.reader.normalize(img)
 
     def prepare_label(self, label, fname):
-        """ Set the label to the correct size and dimensions for placement into the ground truth tensor. """
+        """Set the label to the correct size and dimensions for placement into the ground truth tensor."""
         # If cropping, then crop the label here
         if self.use_cropper:
             label = self.cropper.crop(label, fname)
@@ -175,7 +199,8 @@ class __Generator(Sequence, ABC):
 
 
 class Generator3D(__Generator):
-    """ Class for the 3D image and label generator. """
+    """Class for the 3D image and label generator."""
+
     def __init__(
         self,
         model_save_path,
@@ -212,8 +237,10 @@ class Generator3D(__Generator):
         if cascade:
             self.reader = NPYReader()
             self.image_fnames = [
-                os.path.join(model_save_path, 'mask', dataset, f'{x}_SAX.nii.gz')
-                for x in sorted(os.listdir(os.path.join(model_save_path, 'mask', dataset)))
+                os.path.join(model_save_path, "mask", dataset, f"{x}_SAX.nii.gz")
+                for x in sorted(
+                    os.listdir(os.path.join(model_save_path, "mask", dataset))
+                )
             ]
         else:
             self.reader = NIIReader()
@@ -222,11 +249,17 @@ class Generator3D(__Generator):
 
     def get_quality_weightings(self, fname):
         """Get the quality weights for the current image - full or sliced."""
-        curr_label = fname.split('/')[-1]
-        curr_root = curr_label.split('_')[1]
+        curr_label = fname.split("/")[-1]
+        curr_root = curr_label.split("_")[1]
 
         # Get the quality weighting scores
-        qw = np.array([self.quality_weighting_scores[str(x)] for x in self.quality_weightings_dict[curr_root]], dtype=np.float32)
+        qw = np.array(
+            [
+                self.quality_weighting_scores[str(x)]
+                for x in self.quality_weightings_dict[curr_root]
+            ],
+            dtype=np.float32,
+        )
 
         # If the shape is not the same as the model depth, need to resize without interpolating
         if qw.shape[0] != self.image_size[-1]:
@@ -237,6 +270,7 @@ class Generator3D(__Generator):
 
 class Generator3DFrozen(Generator3D):
     """Generate full-size 3D images, but keep the dimensionality of the depth axis the same (no interpolation)."""
+
     def __init__(
         self,
         model_save_path,
@@ -270,7 +304,9 @@ class Generator3DFrozen(Generator3D):
             cascade,
             quality_weighting_scores,
         )
-        assert batch_size == 1, "Only batch size 1 will work with 3DFrozen as differing input depths are non-batchable"
+        assert (
+            batch_size == 1
+        ), "Only batch size 1 will work with 3DFrozen as differing input depths are non-batchable"
 
     def get_data(self, batch_index, weight_mode):
         # Get the training data
@@ -282,18 +318,34 @@ class Generator3DFrozen(Generator3D):
         # print(f"get_data: {img.shape=}")
         # print(f"get_data: {depth=}")
 
-        assert img.shape == label.shape, f"Shape incompatibility in file {self.image_fnames[batch_index]}: {img.shape=}, {label.shape=}"
+        assert (
+            img.shape == label.shape
+        ), f"Shape incompatibility in file {self.image_fnames[batch_index]}: {img.shape=}, {label.shape=}"
 
         # TODO: update quality weightings if needed, idk if it will work as-is
         quality_weightings = np.zeros([1, depth], dtype=np.float32)
 
-        x = np.empty([1, self.image_size[0], self.image_size[1], depth, 1], dtype=np.float32)
+        x = np.empty(
+            [1, self.image_size[0], self.image_size[1], depth, 1], dtype=np.float32
+        )
         # print(f"get_data: {x.shape=}")
 
         if self.combine_labels:
-            y = np.empty([1, self.image_size[0], self.image_size[1], depth, len(self.combine_labels)], dtype=np.int8)
+            y = np.empty(
+                [
+                    1,
+                    self.image_size[0],
+                    self.image_size[1],
+                    depth,
+                    len(self.combine_labels),
+                ],
+                dtype=np.int8,
+            )
         else:
-            y = np.empty([1, self.image_size[0], self.image_size[1], depth, len(self.labels)], dtype=np.int8)
+            y = np.empty(
+                [1, self.image_size[0], self.image_size[1], depth, len(self.labels)],
+                dtype=np.int8,
+            )
 
         # Apply data augmentation if option is turned on
         if self.augmenter and not weight_mode:
@@ -308,12 +360,15 @@ class Generator3DFrozen(Generator3D):
             quality_weightings[0, ...] = self.get_quality_weightings(fname)
 
         if self.quality_weighting_scores:
-            return {'model_in': x, 'qw_in': quality_weightings}, {'qw_out': quality_weightings, 'm': y}
+            return {"model_in": x, "qw_in": quality_weightings}, {
+                "qw_out": quality_weightings,
+                "m": y,
+            }
         else:
             return x, y
 
     def prepare_img(self, img, fname):
-        """ Set the image to the correct size and dimensions for placement into the input tensor. """
+        """Set the image to the correct size and dimensions for placement into the input tensor."""
         # If cropping, then crop the image here
         if self.use_cropper and not self.cascade:
             img = self.cropper.crop(img, fname)
@@ -331,14 +386,16 @@ class Generator3DFrozen(Generator3D):
         return self.reader.normalize(img)
 
     def prepare_label(self, label, fname):
-        """ Set the label to the correct size and dimensions for placement into the ground truth tensor. """
+        """Set the label to the correct size and dimensions for placement into the ground truth tensor."""
         # If cropping, then crop the label here
         if self.use_cropper:
             label = self.cropper.crop(label, fname)
 
         # Resize to the input shape of the model without interpolation
         if label.shape[:2] != self.image_size[:2]:
-            label = self.reader.resize(label, self.image_size[:2] + [label.shape[-1]], interpolation_order=0)
+            label = self.reader.resize(
+                label, self.image_size[:2] + [label.shape[-1]], interpolation_order=0
+            )
 
         # If labels are to be combined, do that here and return a one hot encoded tensor
         if self.combine_labels:
@@ -349,11 +406,17 @@ class Generator3DFrozen(Generator3D):
 
     def get_quality_weightings(self, fname):
         """Get the quality weights for the current image - full or sliced."""
-        curr_label = fname.split('/')[-1]
-        curr_root = curr_label.split('_')[1]
+        curr_label = fname.split("/")[-1]
+        curr_root = curr_label.split("_")[1]
 
         # Get the quality weighting scores
-        qw = np.array([self.quality_weighting_scores[str(x)] for x in self.quality_weightings_dict[curr_root]], dtype=np.float32)
+        qw = np.array(
+            [
+                self.quality_weighting_scores[str(x)]
+                for x in self.quality_weightings_dict[curr_root]
+            ],
+            dtype=np.float32,
+        )
 
         # No need to interpolate - the depth of the quality scores will be the same as the number of slices
 
@@ -361,7 +424,8 @@ class Generator3DFrozen(Generator3D):
 
 
 class Generator2D(__Generator):
-    """ Class for the 2D image and label generator. """
+    """Class for the 2D image and label generator."""
+
     def __init__(
         self,
         model_save_path,
@@ -396,40 +460,63 @@ class Generator2D(__Generator):
             quality_weighting_scores,
         )
         self.label_fnames = [
-            [os.path.join(data_path, x, f'{x}_{i:03}_label.npy')
-             for i in range(len(sorted(os.listdir(os.path.join(data_path, x)))) // 2)]
+            [
+                os.path.join(data_path, x, f"{x}_{i:03}_label.npy")
+                for i in range(len(sorted(os.listdir(os.path.join(data_path, x)))) // 2)
+            ]
             for x in sorted(os.listdir(data_path))
         ]
         self.label_fnames = [x for y in self.label_fnames for x in y]
 
         if cascade:
             self.image_fnames = [
-                [os.path.join(model_save_path, 'mask', dataset, x, f'{x}_{i:03}_image.npy')
-                 for i in range(len(sorted(os.listdir(os.path.join(model_save_path, 'mask', dataset, x)))))]
-                for x in sorted(os.listdir(os.path.join(model_save_path, 'mask', dataset)))
+                [
+                    os.path.join(
+                        model_save_path, "mask", dataset, x, f"{x}_{i:03}_image.npy"
+                    )
+                    for i in range(
+                        len(
+                            sorted(
+                                os.listdir(
+                                    os.path.join(model_save_path, "mask", dataset, x)
+                                )
+                            )
+                        )
+                    )
+                ]
+                for x in sorted(
+                    os.listdir(os.path.join(model_save_path, "mask", dataset))
+                )
             ]
             self.image_fnames = [x for y in self.image_fnames for x in y]
         else:
             self.image_fnames = [
-                [os.path.join(data_path, x, f'{x}_{i:03}_image.npy')
-                 for i in range(len(sorted(os.listdir(os.path.join(data_path, x)))) // 2)]
+                [
+                    os.path.join(data_path, x, f"{x}_{i:03}_image.npy")
+                    for i in range(
+                        len(sorted(os.listdir(os.path.join(data_path, x)))) // 2
+                    )
+                ]
                 for x in sorted(os.listdir(data_path))
             ]
             self.image_fnames = [x for y in self.image_fnames for x in y]
 
-        assert len(self.image_fnames) == len(self.label_fnames), \
-            f"Number of image files and label files did not match! {len(self.image_fnames)} images vs. {len(self.label_fnames)} labels ... "
+        assert len(self.image_fnames) == len(
+            self.label_fnames
+        ), f"Number of image files and label files did not match! {len(self.image_fnames)} images vs. {len(self.label_fnames)} labels ... "
         self.index = np.arange(len(self.image_fnames))
 
         self.reader = NPYReader()
 
     def get_quality_weightings(self, fname):
         """Get the quality weights for the current image slice."""
-        curr_label = fname.split('/')[-1]
-        curr_root = curr_label.split('_')[1]
-        curr_slice = int(curr_label.split('_')[2])
+        curr_label = fname.split("/")[-1]
+        curr_root = curr_label.split("_")[1]
+        curr_slice = int(curr_label.split("_")[2])
 
-        return self.quality_weighting_scores[str(self.quality_weightings_dict[curr_root][curr_slice])]
+        return self.quality_weighting_scores[
+            str(self.quality_weightings_dict[curr_root][curr_slice])
+        ]
 
 
 class Generator2DPositional(Generator2D):
@@ -477,9 +564,14 @@ class Generator2DPositional(Generator2D):
         x = np.empty([self.batch_size, *self.image_size, 1], dtype=np.float32)
         pos_embeddings = np.empty([self.batch_size], dtype=np.float32)
         if self.combine_labels:
-            y = np.empty([self.batch_size, *self.image_size, len(self.combine_labels)], dtype=np.int8)
+            y = np.empty(
+                [self.batch_size, *self.image_size, len(self.combine_labels)],
+                dtype=np.int8,
+            )
         else:
-            y = np.empty([self.batch_size, *self.image_size, len(self.labels)], dtype=np.int8)
+            y = np.empty(
+                [self.batch_size, *self.image_size, len(self.labels)], dtype=np.int8
+            )
 
         # Get the training data
         for i, index in enumerate(batch_indices):
@@ -496,11 +588,12 @@ class Generator2DPositional(Generator2D):
             x[i, ...] = self.prepare_img(img, fname)
             y[i, ...] = self.prepare_label(label, fname)
 
-        return {'model_in': x, 'position_in': pos_embeddings}, y
+        return {"model_in": x, "position_in": pos_embeddings}, y
 
 
 class Generator3DShallow(Generator2D):
     """Class for 3D shallow quality weighting scores."""
+
     def __init__(
         self,
         model_save_path,
@@ -538,19 +631,24 @@ class Generator3DShallow(Generator2D):
 
     def get_quality_weightings(self, fname):
         """Get the quality weights for the current image slice."""
-        curr_label = fname.split('/')[-1]
-        curr_root = curr_label.split('_')[1]
-        curr_slice = int(curr_label.split('_')[2])
+        curr_label = fname.split("/")[-1]
+        curr_root = curr_label.split("_")[1]
+        curr_slice = int(curr_label.split("_")[2])
 
         qw = []
         for i in range(curr_slice, curr_slice + self.slice_depth):
-            qw += [self.quality_weighting_scores[str(self.quality_weightings_dict[curr_root][i])]]
+            qw += [
+                self.quality_weighting_scores[
+                    str(self.quality_weightings_dict[curr_root][i])
+                ]
+            ]
 
         return np.array(qw, dtype=np.float32)
 
 
 class DAEGenerator(Sequence):
     """Generator for the denoising auto-encoder."""
+
     def __init__(
         self,
         generic_data_path,
@@ -562,15 +660,17 @@ class DAEGenerator(Sequence):
         shuffle,
         use_cropper,
         vox_permute_p=0.05,
-        zoom_aug=(0.96, 1.04)
+        zoom_aug=(0.96, 1.04),
     ):
         # Set up image filenames and indexing
         self.generic_data_path = generic_data_path  # root of all data folders
         self.data_path = data_path  # model and plane specific path
         self.dataset = dataset
         self.in_fnames = [
-            [os.path.join(data_path, x, f'{x}_{i:03}_label.npy')
-             for i in range(len(sorted(os.listdir(os.path.join(data_path, x)))) // 2)]
+            [
+                os.path.join(data_path, x, f"{x}_{i:03}_label.npy")
+                for i in range(len(sorted(os.listdir(os.path.join(data_path, x)))) // 2)
+            ]
             for x in sorted(os.listdir(data_path))
         ]
         self.in_fnames = [x for y in self.in_fnames for x in y]
@@ -578,7 +678,11 @@ class DAEGenerator(Sequence):
         self.reader = NPYReader()
 
         # Image handling: augmentation, cropping
-        self.cropper = Cropper(generic_data_path, dataset, mode=use_cropper) if use_cropper else False
+        self.cropper = (
+            Cropper(generic_data_path, dataset, mode=use_cropper)
+            if use_cropper
+            else False
+        )
         self.use_zoom_aug = True if zoom_aug else False
         self.augmenter = Augmenter2D(zoom=zoom_aug)
         self.vox_permute_p = vox_permute_p
@@ -605,17 +709,23 @@ class DAEGenerator(Sequence):
 
     def __getitem__(self, index, weight_mode=False):
         # Create a list of batch_size numerical indices
-        indices = self.index[self.batch_size * index:self.batch_size * (index + 1)]
+        indices = self.index[self.batch_size * index : self.batch_size * (index + 1)]
         if indices.size == 0:
-            raise IndexError('Index not within possible range (0 to number of training steps)')
+            raise IndexError(
+                "Index not within possible range (0 to number of training steps)"
+            )
         # Generate the data
         x, y = self.get_data(indices, weight_mode)
         return x, y
 
     def get_data(self, batch_indices, weight_mode):
         # Initialise empty arrays for the training data and labels
-        x = np.empty([self.batch_size, *self.image_size, len(self.labels)], dtype=np.int8)
-        y = np.empty([self.batch_size, *self.image_size, len(self.labels)], dtype=np.int8)
+        x = np.empty(
+            [self.batch_size, *self.image_size, len(self.labels)], dtype=np.int8
+        )
+        y = np.empty(
+            [self.batch_size, *self.image_size, len(self.labels)], dtype=np.int8
+        )
 
         # Get the training data
         for i, index in enumerate(batch_indices):
@@ -636,11 +746,11 @@ class DAEGenerator(Sequence):
         return x, y
 
     def read_file(self, index, fname_list):
-        """ Read the file at the given index of the given list. """
+        """Read the file at the given index of the given list."""
         return self.reader.read(fname_list[index]), fname_list[index]
 
     def prepare(self, label, fname):
-        """ Set the label to the correct size and dimensions for placement into the ground truth tensor. """
+        """Set the label to the correct size and dimensions for placement into the ground truth tensor."""
         # If cropping, then crop the image here
         if self.use_cropper:
             label = self.cropper.crop(label, fname)
@@ -654,13 +764,19 @@ class DAEGenerator(Sequence):
 
     def zoom_aug(self, f):
         """Apply simple zoom augmentation to the input."""
-        zoom_factor = self.augmenter.rng.uniform(self.augmenter.zoom[0], self.augmenter.zoom[1])
+        zoom_factor = self.augmenter.rng.uniform(
+            self.augmenter.zoom[0], self.augmenter.zoom[1]
+        )
         return self.augmenter.apply_zoom(f, zoom_factor, interpolation_order=0)
 
     def permute_input(self, f):
         """Apply permutation to the input label to create the new input and the target."""
         permute_field = np.random.uniform(0.0, 1.0, f.shape[:-1])
         new_vox_labels = np.random.randint(0, len(self.labels), f.shape[:-1])
-        f_permute = np.where(np.less_equal(permute_field, self.vox_permute_p), new_vox_labels, np.argmax(f, axis=-1))
+        f_permute = np.where(
+            np.less_equal(permute_field, self.vox_permute_p),
+            new_vox_labels,
+            np.argmax(f, axis=-1),
+        )
         f_permute = one_hot(f_permute, len(self.labels), dtype=np.int8).numpy()
         return f_permute, f

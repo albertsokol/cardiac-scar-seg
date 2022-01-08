@@ -17,11 +17,11 @@ class __Metric(Metric):
 
 
 class DiceMetric(__Metric):
-    def __init__(self, batch_size=1, name='dice', **kwargs):
+    def __init__(self, batch_size=1, name="dice", **kwargs):
         super(DiceMetric, self).__init__(name=name, **kwargs)
         self.batch_size = batch_size
-        self.total_dice = self.add_weight(name='dice_value', initializer='zeros')
-        self.num_batches = self.add_weight(name='num_batches', initializer='zeros')
+        self.total_dice = self.add_weight(name="dice_value", initializer="zeros")
+        self.num_batches = self.add_weight(name="num_batches", initializer="zeros")
 
     def update_state(self, y_true, y_pred, sample_weight=None):
         self.num_batches.assign_add(1)
@@ -35,12 +35,12 @@ class DiceMetric(__Metric):
 
 
 class ClassWiseDiceMetric(__Metric):
-    def __init__(self, batch_size=1, i=0, name='c_dice', **kwargs):
+    def __init__(self, batch_size=1, i=0, name="c_dice", **kwargs):
         super(ClassWiseDiceMetric, self).__init__(name=name, **kwargs)
         self.batch_size = batch_size
         self.i = i
-        self.total_dice = self.add_weight(name='dice_value', initializer='zeros')
-        self.num_batches = self.add_weight(name='num_batches', initializer='zeros')
+        self.total_dice = self.add_weight(name="dice_value", initializer="zeros")
+        self.num_batches = self.add_weight(name="num_batches", initializer="zeros")
 
     def update_state(self, y_true, y_pred, sample_weight=None):
         self.num_batches.assign_add(1)

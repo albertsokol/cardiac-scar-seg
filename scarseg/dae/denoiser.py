@@ -6,19 +6,20 @@ from scarseg.metrics import DiceMetric, ClassWiseDiceMetric
 
 class Denoiser:
     """Class for denoising postprocessing using a trainer DenoisingUnet model."""
+
     def __init__(self, model_path, label_len):
         self.model = self.load_model(model_path)
         self.label_len = label_len
 
     @staticmethod
     def load_model(model_path):
-        """ Loads the pretrained model. """
+        """Loads the pretrained model."""
         return tf.keras.models.load_model(
             model_path,
             compile=False,
             custom_objects={
-                'DiceMetric': DiceMetric,
-                'ClassWiseDiceMetric': ClassWiseDiceMetric,
+                "DiceMetric": DiceMetric,
+                "ClassWiseDiceMetric": ClassWiseDiceMetric,
             },
         )
 

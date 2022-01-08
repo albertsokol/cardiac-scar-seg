@@ -23,17 +23,28 @@ def main():
     plane = p.plane
     cropper = p.cropper
 
-    if p.model_name in ['UNet3D', 'VNet', 'UNet3DFrozenDepth']:
-        dims = '3D'
-        plane = ''
-    elif p.model_name in ['UNet3DShallow', 'VNetShallow']:
-        dims = '3DShallow'
+    if p.model_name in ["UNet3D", "VNet", "UNet3DFrozenDepth"]:
+        dims = "3D"
+        plane = ""
+    elif p.model_name in ["UNet3DShallow", "VNetShallow"]:
+        dims = "3DShallow"
     else:
-        dims = '2D'
+        dims = "2D"
 
     # Get the names of all the scans we are interested in
-    roots = sorted(os.listdir(os.path.join(predict_config['data_path'], dims, predict_config['dataset'], plane)))
-    roots = [os.path.join(predict_config['data_path'], dims, predict_config['dataset'], plane, root) for root in roots]
+    roots = sorted(
+        os.listdir(
+            os.path.join(
+                predict_config["data_path"], dims, predict_config["dataset"], plane
+            )
+        )
+    )
+    roots = [
+        os.path.join(
+            predict_config["data_path"], dims, predict_config["dataset"], plane, root
+        )
+        for root in roots
+    ]
     print(f"{roots=}")
 
     # Get the correct metadata
@@ -43,13 +54,22 @@ def main():
     reader = NIIReader()
 
     # Get roots from the 3D folder
-    real_roots = sorted(os.listdir(os.path.join(predict_config['data_path'], '3D', predict_config['dataset'])))
-    real_roots = [os.path.join(predict_config['data_path'], '3D', predict_config['dataset'], x) for x in real_roots]
+    real_roots = sorted(
+        os.listdir(
+            os.path.join(predict_config["data_path"], "3D", predict_config["dataset"])
+        )
+    )
+    real_roots = [
+        os.path.join(predict_config["data_path"], "3D", predict_config["dataset"], x)
+        for x in real_roots
+    ]
 
     # Load important information from the original .nii.gz files for these images
     for real_root in tqdm(real_roots):
-        name_end = real_root.split('/')[-1]
-        img = nib.load(os.path.join(real_root, f'{name_end}_SAX_mask2.nii.gz'), mmap=False)
+        name_end = real_root.split("/")[-1]
+        img = nib.load(
+            os.path.join(real_root, f"{name_end}_SAX_mask2.nii.gz"), mmap=False
+        )
         # Headers = headers from the original NiFTi file
         headers[name_end] = img.header
         # Affine = transformation which maps points to 3D space of the MRI image
@@ -62,7 +82,7 @@ def main():
         # Get the prediction
         image, label, pred_label = p.predict(fname=root, display=False)
         # Get the key to find the correct header and affine for the output
-        name_end = root.split('/')[-1]
+        name_end = root.split("/")[-1]
         # print(f'{name_end=}')
         save_img = np.zeros(shapes[name_end])
         # print(f'{save_img.shape=}')
@@ -72,16 +92,18 @@ def main():
         # print(f"{reverse_size=}")
         # print(f"{cut_dims=}")
         # Resize the prediction to undo the pre-processing
-        pred_label = reader.resize(
-            pred_label,
-            reverse_size,
-            interpolation_order=0
-        )
+        pred_label = reader.resize(pred_label, reverse_size, interpolation_order=0)
         # Get the correct portion of the predicted label to output
         try:
-            save_img[cut_dims["top"]:cut_dims["bottom"], cut_dims["left"]:cut_dims["right"], ...] = pred_label
+            save_img[
+                cut_dims["top"] : cut_dims["bottom"],
+                cut_dims["left"] : cut_dims["right"],
+                ...,
+            ] = pred_label
         except ValueError:
-            print(f"Unable to undo pre-processing for image {name_end}! {save_img.shape=}, {pred_label.shape=}")
+            print(
+                f"Unable to undo pre-processing for image {name_end}! {save_img.shape=}, {pred_label.shape=}"
+            )
             continue
         # Save the image in NiFTi format
         # exit()
@@ -93,7 +115,13 @@ def main():
             header=headers[name_end],
         )
 
-        nib.save(save_img, os.path.join('/home/y4tsu/PycharmProjects/3d_unet/saved_preds', f'{name_end}_prediction.nii.gz'))
+        nib.save(
+            save_img,
+            os.path.join(
+                "/home/y4tsu/PycharmProjects/3d_unet/saved_preds",
+                f"{name_end}_prediction.nii.gz",
+            ),
+        )
         # print('-----')
 
     print(f"Finished! Process took {time.time() - start:.2f} seconds.")

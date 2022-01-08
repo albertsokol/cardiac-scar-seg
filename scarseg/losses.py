@@ -4,7 +4,8 @@ from tensorflow.keras.losses import Loss
 
 
 class __Loss(Loss):
-    """ Generic methods for all loss functions. """
+    """Generic methods for all loss functions."""
+
     def __init__(self, batch_size):
         super().__init__()
         self.batch_size = batch_size
@@ -21,38 +22,41 @@ class __Loss(Loss):
 
     @staticmethod
     def clip(z):
-        """ Clip all values in a tensor to prevent divide by 0 errors. """
+        """Clip all values in a tensor to prevent divide by 0 errors."""
         z = K.clip(z, 1e-7, 1)
         return z
 
 
 class SoftmaxLoss(__Loss):
-    """ Basic non-weighted softmax loss. """
+    """Basic non-weighted softmax loss."""
+
     def __init__(self, batch_size):
         super().__init__(batch_size)
 
     def call(self, y_true, y_pred):
-        loss = - K.sum(y_true * K.log(self.clip(y_pred)))
+        loss = -K.sum(y_true * K.log(self.clip(y_pred)))
         # Return loss normalized by batch size and image size for stable LRs across different input sizes
         return loss / self.get_num_vox(y_pred)
 
 
 class WeightedSoftmaxLoss(__Loss):
-    """ Categorical cross-entropy loss, which is used in the original UNet-3D paper. """
+    """Categorical cross-entropy loss, which is used in the original UNet-3D paper."""
+
     def __init__(self, batch_size, label_weights):
         super().__init__(batch_size)
         self.label_weights = label_weights
 
     def call(self, y_true, y_pred):
         # label_weights is be a len(labels) length vector of voxel weights for each label
-        loss = - K.sum(self.label_weights * y_true * K.log(self.clip(y_pred)))
+        loss = -K.sum(self.label_weights * y_true * K.log(self.clip(y_pred)))
 
         # Return loss normalized by batch size and image size for stable LRs across different input sizes
         return loss / self.get_num_vox(y_pred)
 
 
 class DiceLoss(__Loss):
-    """ Dice loss function. """
+    """Dice loss function."""
+
     def __init__(self, batch_size):
         super().__init__(batch_size)
 
@@ -68,7 +72,8 @@ class DiceLoss(__Loss):
 
 
 class WeightedSoftmaxDiceLoss(__Loss):
-    """ A combination of weighted cross-entropy loss and Dice loss with adjustable weighting. """
+    """A combination of weighted cross-entropy loss and Dice loss with adjustable weighting."""
+
     def __init__(self, batch_size, label_weights, dice_weight=0.5):
         """
         Initialiser for WeightedSoftmaxDiceLoss.
@@ -85,7 +90,7 @@ class WeightedSoftmaxDiceLoss(__Loss):
 
     def call(self, y_true, y_pred):
         # First, get the softmax loss
-        softmax_loss = - K.sum(self.label_weights * y_true * K.log(self.clip(y_pred)))
+        softmax_loss = -K.sum(self.label_weights * y_true * K.log(self.clip(y_pred)))
         softmax_loss /= self.get_num_vox(y_pred)
 
         # Then, get the Dice loss
@@ -102,6 +107,7 @@ class WeightedSoftmaxDiceLossPlusQuality(__Loss):
     """
     A combination of weighted cross-entropy loss and Dice loss with adjustable weighting and quality score weighting.
     """
+
     def __init__(self, batch_size, label_weights, full_3d_mode, dice_weight=0.5):
         """
         Initialiser for WeightedSoftmaxDiceLossPlusQuality.
@@ -133,15 +139,19 @@ class WeightedSoftmaxDiceLossPlusQuality(__Loss):
             else:
                 self.curr_slice_qualities = tf.squeeze(y_pred)
             # Return a loss of 0 for this case
-            return 0.
+            return 0.0
 
         # First, get the softmax loss
-        softmax_loss = - K.sum(self.label_weights * y_true * K.log(self.clip(y_pred)), axis=self.sum_axes)
+        softmax_loss = -K.sum(
+            self.label_weights * y_true * K.log(self.clip(y_pred)), axis=self.sum_axes
+        )
         softmax_loss /= self.get_num_vox(y_pred)
 
         # Then, get the Dice loss
         numerator = 2 * K.sum(y_true * y_pred, axis=self.sum_axes) + 1e-7
-        denominator = K.sum(y_true, axis=self.sum_axes) + K.sum(y_pred, axis=self.sum_axes) + 1e-7
+        denominator = (
+            K.sum(y_true, axis=self.sum_axes) + K.sum(y_pred, axis=self.sum_axes) + 1e-7
+        )
         dice_coefficient = numerator / denominator
         dice_loss = 1 - dice_coefficient
 

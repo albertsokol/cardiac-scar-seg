@@ -16,26 +16,30 @@ from scarseg.readers import NIIReader, NPYReader
 
 def load_predictor(predict_config):
     """Return the correct type of Predictor class for the given model type."""
-    if isinstance(predict_config['model_path'], str):
+    if isinstance(predict_config["model_path"], str):
         # Load the training config from the predict config
-        with open(os.path.join(predict_config['model_path'], 'train_config.json'), 'r') as train_config_file:
+        with open(
+            os.path.join(predict_config["model_path"], "train_config.json"), "r"
+        ) as train_config_file:
             train_config = json.load(train_config_file)
         # Then load the model
-        if train_config['model'] in ['UNet3D', 'VNet']:
+        if train_config["model"] in ["UNet3D", "VNet"]:
             p = Predictor3D(**predict_config, train_config=train_config)
-        elif train_config['model'] in ['UNet3DShallow', 'VNetShallow']:
+        elif train_config["model"] in ["UNet3DShallow", "VNetShallow"]:
             p = Predictor3DShallow(**predict_config, train_config=train_config)
-        elif train_config['model'] in ['UNet3DFrozenDepth']:
+        elif train_config["model"] in ["UNet3DFrozenDepth"]:
             p = Predictor3DFrozenDepth(**predict_config, train_config=train_config)
         elif train_config["model"] in ["UNet2DPositional"]:
             p = Predictor2DPositional(**predict_config, train_config=train_config)
         else:
             p = Predictor2D(**predict_config, train_config=train_config)
-    elif isinstance(predict_config['model_path'], list):
+    elif isinstance(predict_config["model_path"], list):
         # Otherwise, if a list, then build a graph of Predictors to run sequentially for staggered cascading
         p = PredictorStaggeredCascaded(**predict_config)
     else:
-        raise AttributeError(f"predict_config.json model_path must be str or list, but got {type(predict_config['model_path'])}")
+        raise AttributeError(
+            f"predict_config.json model_path must be str or list, but got {type(predict_config['model_path'])}"
+        )
 
     return p
 
@@ -45,26 +49,32 @@ class __Predictor:
         self.rng = np.random.default_rng()
         self.post_process = post_process
 
-        self.model_path = train_config['model_save_path']
-        self.model_name = train_config['model']
-        self.image_size = train_config['image_size']
-        self.labels_dict = train_config['labels']
+        self.model_path = train_config["model_save_path"]
+        self.model_name = train_config["model"]
+        self.image_size = train_config["image_size"]
+        self.labels_dict = train_config["labels"]
         self.label_indices = {self.labels_dict[k]: int(k) for k in self.labels_dict}
-        self.combine_labels = train_config['combine_labels']
-        self.cascade = {} if not train_config['cascade'] else train_config['cascade']
+        self.combine_labels = train_config["combine_labels"]
+        self.cascade = {} if not train_config["cascade"] else train_config["cascade"]
 
-        self.quality_weighted_mode = True if 'quality' in train_config['loss_fn'] else False
+        self.quality_weighted_mode = (
+            True if "quality" in train_config["loss_fn"] else False
+        )
 
         self.dimensionality = None
         self.plane = train_config["plane"]
 
         self.data_path = data_path
-        assert dataset in ["train", "val", "test"], f"dataset must be one of: 'train', 'val', 'test'; but got {dataset}"
+        assert dataset in [
+            "train",
+            "val",
+            "test",
+        ], f"dataset must be one of: 'train', 'val', 'test'; but got {dataset}"
         self.dataset = dataset
 
-        self.use_cropper = train_config['use_cropper']
+        self.use_cropper = train_config["use_cropper"]
         if self.use_cropper:
-            self.cropper = Cropper(data_path, dataset, train_config['use_cropper'])
+            self.cropper = Cropper(data_path, dataset, train_config["use_cropper"])
         if self.post_process and self.post_process != "erosion dilation":
             self.denoiser = Denoiser(self.post_process, len(self.labels_dict))
 
@@ -80,13 +90,13 @@ class __Predictor:
 
     @staticmethod
     def load_model(model_path):
-        """ Loads the pretrained model. """
+        """Loads the pretrained model."""
         return tf.keras.models.load_model(
             model_path,
             compile=False,
             custom_objects={
-                'DiceMetric': DiceMetric,
-                'ClassWiseDiceMetric': ClassWiseDiceMetric,
+                "DiceMetric": DiceMetric,
+                "ClassWiseDiceMetric": ClassWiseDiceMetric,
             },
         )
 
@@ -106,11 +116,15 @@ class __Predictor:
         if self.combine_labels:
             y_true = tf.one_hot(y_true, len(self.combine_labels), dtype=np.int8).numpy()
             if y_pred is not None:
-                y_pred = tf.one_hot(y_pred, len(self.combine_labels), dtype=np.int8).numpy()
+                y_pred = tf.one_hot(
+                    y_pred, len(self.combine_labels), dtype=np.int8
+                ).numpy()
         else:
             y_true = tf.one_hot(y_true, len(self.labels_dict), dtype=np.int8).numpy()
             if y_pred is not None:
-                y_pred = tf.one_hot(y_pred, len(self.labels_dict), dtype=np.int8).numpy()
+                y_pred = tf.one_hot(
+                    y_pred, len(self.labels_dict), dtype=np.int8
+                ).numpy()
 
         if y_pred is None:
             return y_true
@@ -129,7 +143,9 @@ class __Predictor:
     def calculate_class_wise_dice(self, y_true, y_pred):
         """Computes dice coefficient for each class using numpy."""
         y_true, y_pred = self.get_one_hot(y_true, y_pred)
-        length = len(self.combine_labels) if self.combine_labels else len(self.labels_dict)
+        length = (
+            len(self.combine_labels) if self.combine_labels else len(self.labels_dict)
+        )
         dices = np.zeros([length])
 
         # Iterate over all the classes, getting the dice score
@@ -143,7 +159,9 @@ class __Predictor:
 
         return dices
 
-    def predict(self, fname=None, display=False, apply_combine=True, return_fname=False):
+    def predict(
+        self, fname=None, display=False, apply_combine=True, return_fname=False
+    ):
         raise NotImplementedError
 
     def post_process_erosion_dilation(self, pred_label, kernel_size=5):
@@ -181,11 +199,13 @@ class __Predictor:
 
         return pred_label
 
-    def display(self, image, label, pred_label, plane='transverse'):
+    def display(self, image, label, pred_label, plane="transverse"):
         """
         Should show the label vs. prediction, label vs. image and prediction vs. image in a single scrollable view.
         """
-        self.reader.scroll_view(np.concatenate((image * 7., label, pred_label)), plane=plane)
+        self.reader.scroll_view(
+            np.concatenate((image * 7.0, label, pred_label)), plane=plane
+        )
 
     @staticmethod
     def __check_image_label_paths(image_paths, image_folder, label_paths, label_folder):
@@ -194,8 +214,9 @@ class __Predictor:
             raise AttributeError(f"No images found at {image_folder}")
         if not label_paths:
             raise AttributeError(f"No labels found at {label_folder}")
-        assert len(image_paths) == len(label_paths), \
-            f"image and label size mismatch: image length {len(image_paths)}, label length {len(label_paths)}"
+        assert len(image_paths) == len(
+            label_paths
+        ), f"image and label size mismatch: image length {len(image_paths)}, label length {len(label_paths)}"
 
     def _get_folder_paths(self, fname):
         """Get the correct image folder and label folder name plus the correct suffix for loading."""
@@ -206,7 +227,13 @@ class __Predictor:
             label_folder = self.label_fnames[idx]
         else:
             image_folder = fname
-            label_folder = os.path.join(self.data_path, self.dimensionality, self.dataset, self.plane, fname.split("/")[-1])
+            label_folder = os.path.join(
+                self.data_path,
+                self.dimensionality,
+                self.dataset,
+                self.plane,
+                fname.split("/")[-1],
+            )
 
         suffix = image_folder.split("/")[-1]
 
@@ -218,18 +245,31 @@ class __Predictor:
     def _get_image_label_paths(self, image_folder, label_folder, suffix):
         """Get the paths to all components of a scan and label (the image and label sub-parts)."""
         if not self.cascade:
-            image_paths = [os.path.join(image_folder, x)
-                           for x in sorted(os.listdir(image_folder)) if '_image.' in x]
+            image_paths = [
+                os.path.join(image_folder, x)
+                for x in sorted(os.listdir(image_folder))
+                if "_image." in x
+            ]
         else:
-            image_paths = [os.path.join(self.model_path, 'mask', self.dataset, suffix, x)
-                           for x in sorted(os.listdir(os.path.join(
-                                self.model_path, 'mask', self.dataset, suffix
-                           ))) if '_image.' in x]
+            image_paths = [
+                os.path.join(self.model_path, "mask", self.dataset, suffix, x)
+                for x in sorted(
+                    os.listdir(
+                        os.path.join(self.model_path, "mask", self.dataset, suffix)
+                    )
+                )
+                if "_image." in x
+            ]
 
-        label_paths = [os.path.join(label_folder, x)
-                       for x in sorted(os.listdir(label_folder)) if '_label.' in x]
+        label_paths = [
+            os.path.join(label_folder, x)
+            for x in sorted(os.listdir(label_folder))
+            if "_label." in x
+        ]
 
-        self.__check_image_label_paths(image_paths, image_folder, label_paths, label_folder)
+        self.__check_image_label_paths(
+            image_paths, image_folder, label_paths, label_folder
+        )
 
         return image_paths, label_paths
 
@@ -254,26 +294,32 @@ class __Predictor:
 class Predictor3D(__Predictor):
     def __init__(self, data_path, dataset, model_path, train_config, post_process):
         super().__init__(data_path, dataset, train_config, post_process)
-        self.full_data_path = os.path.join(data_path, '3D', self.dataset)
+        self.full_data_path = os.path.join(data_path, "3D", self.dataset)
 
         self.reader = NIIReader() if not self.cascade else NPYReader()
 
         # TODO: test this all works ok
-        self.image_fnames = [os.path.join(self.full_data_path, x) for x in
-                             sorted(os.listdir(self.full_data_path))]
-        self.label_fnames = [os.path.join(self.full_data_path, x) for x in
-                             sorted(os.listdir(self.full_data_path))]
+        self.image_fnames = [
+            os.path.join(self.full_data_path, x)
+            for x in sorted(os.listdir(self.full_data_path))
+        ]
+        self.label_fnames = [
+            os.path.join(self.full_data_path, x)
+            for x in sorted(os.listdir(self.full_data_path))
+        ]
 
         self.model = self.load_model(model_path)
-        self.dimensionality = '3D'
+        self.dimensionality = "3D"
 
     def load_image_label(self, fname):
-        """ Loads the image and label files. """
+        """Loads the image and label files."""
         image_folder, label_folder, suffix, fname = self._get_folder_paths(fname)
 
         # Load image and label
-        image = self.reader.read(os.path.join(image_folder, f'{suffix}_SAX.nii.gz'))
-        label = self.reader.read(os.path.join(label_folder, f'{suffix}_SAX_mask2.nii.gz'))
+        image = self.reader.read(os.path.join(image_folder, f"{suffix}_SAX.nii.gz"))
+        label = self.reader.read(
+            os.path.join(label_folder, f"{suffix}_SAX_mask2.nii.gz")
+        )
 
         image, label = self._prepare_image_label(image, label, suffix)
 
@@ -282,10 +328,14 @@ class Predictor3D(__Predictor):
 
         return image, label, fname
 
-    def predict(self, fname=None, display=False, apply_combine=True, return_fname=False):
+    def predict(
+        self, fname=None, display=False, apply_combine=True, return_fname=False
+    ):
         image, label, fname = self.load_image_label(fname)
         if self.quality_weighted_mode:
-            pred_label = self.model.predict((image, np.array([1.], dtype=np.float32)))[1]
+            pred_label = self.model.predict((image, np.array([1.0], dtype=np.float32)))[
+                1
+            ]
         else:
             pred_label = self.model.predict(image)
 
@@ -310,24 +360,38 @@ class Predictor3D(__Predictor):
 class Predictor2D(__Predictor):
     def __init__(self, data_path, dataset, model_path, train_config, post_process):
         super().__init__(data_path, dataset, train_config, post_process)
-        self.full_data_path = os.path.join(data_path, '2D', self.dataset, train_config["plane"])
+        self.full_data_path = os.path.join(
+            data_path, "2D", self.dataset, train_config["plane"]
+        )
 
         self.reader = NPYReader()
         if not self.cascade:
-            self.image_fnames = [os.path.join(self.full_data_path, x) for x in sorted(os.listdir(self.full_data_path))]
+            self.image_fnames = [
+                os.path.join(self.full_data_path, x)
+                for x in sorted(os.listdir(self.full_data_path))
+            ]
         else:
-            self.image_fnames = [os.path.join(self.model_path, 'mask', self.dataset, x)
-                                 for x in sorted(os.listdir(os.path.join(self.model_path, 'mask', self.dataset)))]
-        self.label_fnames = [os.path.join(self.full_data_path, x) for x in sorted(os.listdir(self.full_data_path))]
+            self.image_fnames = [
+                os.path.join(self.model_path, "mask", self.dataset, x)
+                for x in sorted(
+                    os.listdir(os.path.join(self.model_path, "mask", self.dataset))
+                )
+            ]
+        self.label_fnames = [
+            os.path.join(self.full_data_path, x)
+            for x in sorted(os.listdir(self.full_data_path))
+        ]
 
         self.model = self.load_model(model_path)
-        self.dimensionality = '2D'
-        self.plane = train_config['plane']
+        self.dimensionality = "2D"
+        self.plane = train_config["plane"]
 
     def load_image_label(self, fname):
-        """ Loads the image and label files. """
+        """Loads the image and label files."""
         image_folder, label_folder, suffix, fname = self._get_folder_paths(fname)
-        image_paths, label_paths = self._get_image_label_paths(image_folder, label_folder, suffix)
+        image_paths, label_paths = self._get_image_label_paths(
+            image_folder, label_folder, suffix
+        )
 
         images = np.empty([len(image_paths), *self.image_size, 1], dtype=np.float32)
         labels = np.empty([len(label_paths), *self.image_size], dtype=np.int8)
@@ -345,14 +409,18 @@ class Predictor2D(__Predictor):
 
         return images, labels, fname
 
-    def predict(self, fname=None, display=False, apply_combine=True, return_fname=False):
+    def predict(
+        self, fname=None, display=False, apply_combine=True, return_fname=False
+    ):
         images, labels, fname = self.load_image_label(fname)
         pred_label = np.empty(images.shape[:-1], dtype=np.int8)
 
         for i in range(images.shape[0]):
             if self.quality_weighted_mode:
                 # Get the prediction on the current image with dummy quality weighting - pred is index 1
-                curr_pred = self.model.predict((images[i, np.newaxis, ...], np.array([1.], dtype=np.float32)))[1]
+                curr_pred = self.model.predict(
+                    (images[i, np.newaxis, ...], np.array([1.0], dtype=np.float32))
+                )[1]
             else:
                 curr_pred = self.model.predict(images[i, np.newaxis, ...])
             pred_label[i, ...] = np.squeeze(np.argmax(curr_pred, axis=-1))
@@ -380,19 +448,29 @@ class Predictor2D(__Predictor):
         """Return logits only rather than the softmax output."""
         images, labels, fname = self.load_image_label(fname)
         if self.combine_labels:
-            pred_logits = np.empty(list(images.shape[:-1]) + [len(self.combine_labels)], dtype=np.int8)
+            pred_logits = np.empty(
+                list(images.shape[:-1]) + [len(self.combine_labels)], dtype=np.int8
+            )
         else:
-            pred_logits = np.empty(list(images.shape[:-1]) + [len(self.labels_dict)], dtype=np.int8)
+            pred_logits = np.empty(
+                list(images.shape[:-1]) + [len(self.labels_dict)], dtype=np.int8
+            )
 
         # Create a new model which pulls out the logits before the softmax activation at the end
         if self.quality_weighted_mode:
-            pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=self.model.layers[-1].output)
+            pred_model = tf.keras.models.Model(
+                inputs=self.model.inputs, outputs=self.model.layers[-1].output
+            )
         else:
-            pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=self.model.layers[-2].output)
+            pred_model = tf.keras.models.Model(
+                inputs=self.model.inputs, outputs=self.model.layers[-2].output
+            )
 
         for i in range(images.shape[0]):
             if self.quality_weighted_mode:
-                curr_pred = self.model.predict((images[i, np.newaxis, ...], np.array([1.], dtype=np.float32)))[1]
+                curr_pred = self.model.predict(
+                    (images[i, np.newaxis, ...], np.array([1.0], dtype=np.float32))
+                )[1]
             else:
                 curr_pred = pred_model.predict(images[i, np.newaxis, ...])
             pred_logits[i, ...] = np.squeeze(curr_pred)
@@ -413,12 +491,19 @@ class Predictor2DPositional(Predictor2D):
         """Given the index of a slice in a scan, get a positional embedding which can be input to the model."""
         return (index - 7.5) / 7.5
 
-    def predict(self, fname=None, display=False, apply_combine=True, return_fname=False):
+    def predict(
+        self, fname=None, display=False, apply_combine=True, return_fname=False
+    ):
         images, labels, fname = self.load_image_label(fname)
         pred_label = np.empty(images.shape[:-1], dtype=np.int8)
 
         for i in range(images.shape[0]):
-            curr_pred = self.model.predict((images[i, np.newaxis, ...], np.array([self.embed_position(i)], dtype=np.float32)))
+            curr_pred = self.model.predict(
+                (
+                    images[i, np.newaxis, ...],
+                    np.array([self.embed_position(i)], dtype=np.float32),
+                )
+            )
             pred_label[i, ...] = np.squeeze(np.argmax(curr_pred, axis=-1))
 
         image = np.moveaxis(np.squeeze(images), [0, 1, 2], [2, 0, 1])
@@ -444,24 +529,38 @@ class Predictor2DPositional(Predictor2D):
 class Predictor3DShallow(__Predictor):
     def __init__(self, data_path, dataset, model_path, train_config, post_process):
         super().__init__(data_path, dataset, train_config, post_process)
-        self.full_data_path = os.path.join(data_path, '3DShallow', self.dataset, train_config["plane"])
+        self.full_data_path = os.path.join(
+            data_path, "3DShallow", self.dataset, train_config["plane"]
+        )
 
         self.reader = NPYReader()
         if not self.cascade:
-            self.image_fnames = [os.path.join(self.full_data_path, x) for x in sorted(os.listdir(self.full_data_path))]
+            self.image_fnames = [
+                os.path.join(self.full_data_path, x)
+                for x in sorted(os.listdir(self.full_data_path))
+            ]
         else:
-            self.image_fnames = [os.path.join(self.model_path, 'mask', self.dataset, x)
-                                 for x in sorted(os.listdir(os.path.join(self.model_path, 'mask', self.dataset)))]
-        self.label_fnames = [os.path.join(self.full_data_path, x) for x in sorted(os.listdir(self.full_data_path))]
+            self.image_fnames = [
+                os.path.join(self.model_path, "mask", self.dataset, x)
+                for x in sorted(
+                    os.listdir(os.path.join(self.model_path, "mask", self.dataset))
+                )
+            ]
+        self.label_fnames = [
+            os.path.join(self.full_data_path, x)
+            for x in sorted(os.listdir(self.full_data_path))
+        ]
 
         self.model = self.load_model(model_path)
-        self.dimensionality = '3DShallow'
-        self.plane = train_config['plane']
+        self.dimensionality = "3DShallow"
+        self.plane = train_config["plane"]
 
     def load_image_label(self, fname):
-        """ Loads the image and label files. """
+        """Loads the image and label files."""
         image_folder, label_folder, suffix, fname = self._get_folder_paths(fname)
-        image_paths, label_paths = self._get_image_label_paths(image_folder, label_folder, suffix)
+        image_paths, label_paths = self._get_image_label_paths(
+            image_folder, label_folder, suffix
+        )
         images, labels = [], []
 
         for i, (image_path, label_path) in enumerate(zip(image_paths, label_paths)):
@@ -480,7 +579,9 @@ class Predictor3DShallow(__Predictor):
 
     def construct_slice_wise(self, f_list, image_depth, slice_depth):
         """Given the images or labels list, re-construct the image/label slice by slice to the full tensor."""
-        f = np.empty([*self.image_size[:2], image_depth + slice_depth - 1], dtype=np.float32)
+        f = np.empty(
+            [*self.image_size[:2], image_depth + slice_depth - 1], dtype=np.float32
+        )
         j = 1
         for i in range(f.shape[-1]):
             if i < image_depth:
@@ -494,10 +595,14 @@ class Predictor3DShallow(__Predictor):
     def aggregate_slice_logits(self, pred_logits, image_depth, slice_depth=3):
         """Combine logits by averaging and re-construct a full 3D predicted label from slices."""
         if slice_depth % 2 != 1:
-            raise AttributeError(f'slice_depth must be an odd int currently - but received {slice_depth}')
+            raise AttributeError(
+                f"slice_depth must be an odd int currently - but received {slice_depth}"
+            )
 
         # Initialise with empty array
-        pred_label = np.empty([*self.image_size[:2], image_depth + slice_depth - 1], dtype=np.int8)
+        pred_label = np.empty(
+            [*self.image_size[:2], image_depth + slice_depth - 1], dtype=np.int8
+        )
 
         # Construct the predicted label slice-wise
         all_ims = list(range(image_depth))
@@ -517,7 +622,9 @@ class Predictor3DShallow(__Predictor):
                 for j, k in enumerate(reversed(range(len(curr_ims)))):
                     pairs += [[curr_ims[j], k]]
             else:
-                for j, k in enumerate(reversed(range(slice_depth - len(curr_ims), slice_depth))):
+                for j, k in enumerate(
+                    reversed(range(slice_depth - len(curr_ims), slice_depth))
+                ):
                     pairs += [[curr_ims[j], k]]
 
             # Pull the logits from the correct predicted logits image and slice
@@ -532,27 +639,40 @@ class Predictor3DShallow(__Predictor):
             # Apply softmax and argmax to the logits to get the predicted labels for the current slice
             if curr_logits.shape[-1] == 1:
                 # Sigmoid (binary case) - just use z > 0 since don't need sigmoid function for prediction
-                pred_label[..., i] = np.where(np.greater_equal(curr_logits[..., 0], 0), 1, 0)
+                pred_label[..., i] = np.where(
+                    np.greater_equal(curr_logits[..., 0], 0), 1, 0
+                )
             else:
                 # Softmax
                 pred_label[..., i] = np.argmax(softmax(curr_logits, axis=-1), axis=-1)
 
         return pred_label
 
-    def predict(self, fname=None, display=False, apply_combine=True, return_fname=False):
+    def predict(
+        self, fname=None, display=False, apply_combine=True, return_fname=False
+    ):
         """Return logits only rather than the softmax output."""
         images, labels, fname = self.load_image_label(fname)
         pred_logits = []
 
         # Create a new model which pulls out the logits before the softmax activation at the end
         if self.quality_weighted_mode:
-            pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=self.model.layers[-1].output)
+            pred_model = tf.keras.models.Model(
+                inputs=self.model.inputs, outputs=self.model.layers[-1].output
+            )
         else:
-            pred_model = tf.keras.models.Model(inputs=self.model.inputs, outputs=self.model.layers[-2].output)
+            pred_model = tf.keras.models.Model(
+                inputs=self.model.inputs, outputs=self.model.layers[-2].output
+            )
 
         for image in images:
             if self.quality_weighted_mode:
-                curr_pred = pred_model.predict((image[np.newaxis, ...], np.array([self.image_size[-1]], dtype=np.float32)))
+                curr_pred = pred_model.predict(
+                    (
+                        image[np.newaxis, ...],
+                        np.array([self.image_size[-1]], dtype=np.float32),
+                    )
+                )
             else:
                 curr_pred = pred_model.predict(image[np.newaxis, ...])
             pred_logits += [np.squeeze(curr_pred)]
@@ -560,7 +680,9 @@ class Predictor3DShallow(__Predictor):
         # Re-generate the image and labels slice-wise
         image = self.construct_slice_wise(images, len(images), self.image_size[-1])
         label = self.construct_slice_wise(labels, len(images), self.image_size[-1])
-        pred_label = self.aggregate_slice_logits(pred_logits, len(images), self.image_size[-1])
+        pred_label = self.aggregate_slice_logits(
+            pred_logits, len(images), self.image_size[-1]
+        )
 
         if self.combine_labels and apply_combine:
             label = self.apply_label_combine(label)
@@ -590,7 +712,9 @@ class Predictor3DFrozenDepth(Predictor3D):
         if image.shape[:2] != self.image_size[:2]:
             image = self.reader.resize(image, self.image_size[:2] + [image.shape[-1]])
         if label.shape[:2] != self.image_size[:2]:
-            label = self.reader.resize(label, self.image_size[:2] + [image.shape[-1]], interpolation_order=0)
+            label = self.reader.resize(
+                label, self.image_size[:2] + [image.shape[-1]], interpolation_order=0
+            )
 
         image = self.reader.normalize(image)
 
@@ -599,6 +723,7 @@ class Predictor3DFrozenDepth(Predictor3D):
 
 class PredictorNode:
     """Node that forms part of the PredictorStaggeredCascaded tree."""
+
     def __init__(self, model_path, combine_labels, keep_labels=None):
         self.model_path = model_path
         self.combine_labels = combine_labels
@@ -608,8 +733,11 @@ class PredictorNode:
         self.children = []
 
     def __repr__(self, level=0):
-        s = f"\t" * level + f"path: {self.model_path}, combine_labels: {self.combine_labels}, keep_labels: " \
-                            f"{self.keep_labels} outputs: {self.outputs}, output_idx: {self.output_idx}\n"
+        s = (
+            f"\t" * level
+            + f"path: {self.model_path}, combine_labels: {self.combine_labels}, keep_labels: "
+            f"{self.keep_labels} outputs: {self.outputs}, output_idx: {self.output_idx}\n"
+        )
         for child in self.children:
             s += child.__repr__(level + 1)
         return s
@@ -624,6 +752,7 @@ class PredictorStaggeredCascaded:
     Builds a generic tree structure to define execution order of models and determine which models are responsible
     for each output label automatically.
     """
+
     def __init__(self, data_path, dataset, model_path, post_process):
         self.data_path = data_path
         self.dataset = dataset
@@ -634,7 +763,7 @@ class PredictorStaggeredCascaded:
         self.label_map = {}
         self.model_cache = {}
 
-        with open(os.path.join(self.model_paths[0], 'train_config.json'), 'r') as f:
+        with open(os.path.join(self.model_paths[0], "train_config.json"), "r") as f:
             init_config = json.load(f)
 
         # Attributes to enable compatability with performance.py
@@ -682,7 +811,9 @@ class PredictorStaggeredCascaded:
             return
         else:
             for child in node.children:
-                added = self.dfs_add(model_path, combine_labels, keep_labels, parent, child)
+                added = self.dfs_add(
+                    model_path, combine_labels, keep_labels, parent, child
+                )
                 if added is not None:
                     return True
 
@@ -691,9 +822,9 @@ class PredictorStaggeredCascaded:
         Traverse all nodes in the tree, updating the node map with the model for the shortest list for the current k.
         """
         curr_len = [len(x) for x in node.combine_labels if k in x][0]
-        if curr_len < self.node_map[k]['len']:
-            self.node_map[k]['node'] = node
-            self.node_map[k]['len'] = curr_len
+        if curr_len < self.node_map[k]["len"]:
+            self.node_map[k]["node"] = node
+            self.node_map[k]["len"] = curr_len
         if not node.children:
             return
         else:
@@ -711,23 +842,31 @@ class PredictorStaggeredCascaded:
             # Run predictions with node, which will be root tree on first iter
             if node not in self.model_cache:
                 # Load models into the cache to prevent re-loading on every predicted image
-                self.model_cache[node] = load_predictor({
-                    'model_path': node.model_path,
-                    'data_path': self.data_path,
-                    'dataset': self.dataset,
-                    'post_process': self.post_process
-                })
+                self.model_cache[node] = load_predictor(
+                    {
+                        "model_path": node.model_path,
+                        "data_path": self.data_path,
+                        "dataset": self.dataset,
+                        "post_process": self.post_process,
+                    }
+                )
 
             if fname is None:
-                image, label, curr_pred, fname = self.model_cache[node].predict(fname, display=False, apply_combine=False, return_fname=True)
+                image, label, curr_pred, fname = self.model_cache[node].predict(
+                    fname, display=False, apply_combine=False, return_fname=True
+                )
             else:
-                image, label, curr_pred = self.model_cache[node].predict(fname, display=False, apply_combine=False, return_fname=False)
+                image, label, curr_pred = self.model_cache[node].predict(
+                    fname, display=False, apply_combine=False, return_fname=False
+                )
 
             if pred_label is None:
                 pred_label = np.zeros([*curr_pred.shape], dtype=np.int8)
 
             for k, i in zip(node.outputs, node.output_idx):
-                pred_label = np.where(np.equal(curr_pred, i), self.label_map[k], pred_label)
+                pred_label = np.where(
+                    np.equal(curr_pred, i), self.label_map[k], pred_label
+                )
 
             if node.children:
                 queue += node.children
@@ -743,30 +882,40 @@ class PredictorStaggeredCascaded:
         # First find the base of the tree; the model which does not have any nested cascading
         tree = None
         for model_path in self.model_paths:
-            with open(os.path.join(model_path, 'train_config.json'), 'r') as f:
+            with open(os.path.join(model_path, "train_config.json"), "r") as f:
                 curr_train_config = json.load(f)
-            if not curr_train_config['cascade']:
+            if not curr_train_config["cascade"]:
                 # Identified the root
-                tree = PredictorNode(model_path, curr_train_config['combine_labels'])
+                tree = PredictorNode(model_path, curr_train_config["combine_labels"])
                 self.model_paths.remove(model_path)
                 # Also update the self.node_map with all labels in label dict here
-                self.node_map = {k: {"node": tree, "len": len(curr_train_config['labels'])} for k in list(curr_train_config['labels'].values())}
-                self.label_map = {curr_train_config['labels'][k]: int(k) for k in curr_train_config['labels']}
+                self.node_map = {
+                    k: {"node": tree, "len": len(curr_train_config["labels"])}
+                    for k in list(curr_train_config["labels"].values())
+                }
+                self.label_map = {
+                    curr_train_config["labels"][k]: int(k)
+                    for k in curr_train_config["labels"]
+                }
             break
-        assert tree is not None, "No base model found - at least one model in the list should not be cascaded."
+        assert (
+            tree is not None
+        ), "No base model found - at least one model in the list should not be cascaded."
 
         # Now, build the remainder of the tree based on the paths
         i, threshold = 0, 2048
         while self.model_paths:
             i += 1
             if i > threshold:
-                raise ValueError("Unable to build tree, exceeded maximum number of tries (2048).")
+                raise ValueError(
+                    "Unable to build tree, exceeded maximum number of tries (2048)."
+                )
             model_path = random.choice(self.model_paths)
-            with open(os.path.join(model_path, 'train_config.json'), 'r') as f:
+            with open(os.path.join(model_path, "train_config.json"), "r") as f:
                 curr_train_config = json.load(f)
-            parent = curr_train_config['cascade']['model_path']
-            combine_labels = curr_train_config['combine_labels']
-            keep_labels = curr_train_config['cascade']['keep_labels']
+            parent = curr_train_config["cascade"]["model_path"]
+            combine_labels = curr_train_config["combine_labels"]
+            keep_labels = curr_train_config["cascade"]["keep_labels"]
             added = self.dfs_add(model_path, combine_labels, keep_labels, parent, tree)
             if added is not None:
                 self.model_paths.remove(model_path)
@@ -777,8 +926,12 @@ class PredictorStaggeredCascaded:
         """Find out which model should predict each label by finding the shortest list in which that label occurs."""
         for k in self.node_map:
             self.dfs_update(k, tree)
-            self.node_map[k]['node'].outputs += [k]
-            self.node_map[k]['node'].output_idx += [i for i, x in enumerate(self.node_map[k]['node'].combine_labels) if k in x]
+            self.node_map[k]["node"].outputs += [k]
+            self.node_map[k]["node"].output_idx += [
+                i
+                for i, x in enumerate(self.node_map[k]["node"].combine_labels)
+                if k in x
+            ]
 
     def predict(self, fname=None, display=False):
         if self.tree is None:
@@ -793,8 +946,8 @@ class PredictorStaggeredCascaded:
         return image, label, pred_label
 
 
-if __name__ == '__main__':
-    with open('predict_config.json', 'r') as predict_config_file:
+if __name__ == "__main__":
+    with open("predict_config.json", "r") as predict_config_file:
         predict_config = json.load(predict_config_file)
 
     p = load_predictor(predict_config)

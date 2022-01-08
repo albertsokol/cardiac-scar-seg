@@ -10,11 +10,11 @@ from tqdm import tqdm
 from scarseg.predict import load_predictor
 from scarseg.util import PColour
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     start = time.time()
 
     # Load the configs
-    with open('predict_config.json', 'r') as predict_config_file:
+    with open("predict_config.json", "r") as predict_config_file:
         predict_config = json.load(predict_config_file)
 
     # Load the correct Predictor class for the given model type
@@ -24,17 +24,28 @@ if __name__ == '__main__':
 
     # print(cropper.bboxes)
 
-    if p.model_name in ['UNet3D', 'VNet', 'UNet3DFrozenDepth']:
-        dims = '3D'
-        plane = ''
-    elif p.model_name in ['UNet3DShallow', 'VNetShallow']:
-        dims = '3DShallow'
+    if p.model_name in ["UNet3D", "VNet", "UNet3DFrozenDepth"]:
+        dims = "3D"
+        plane = ""
+    elif p.model_name in ["UNet3DShallow", "VNetShallow"]:
+        dims = "3DShallow"
     else:
-        dims = '2D'
+        dims = "2D"
 
     # Get the names of all the scans we are interested in
-    roots = sorted(os.listdir(os.path.join(predict_config['data_path'], dims, predict_config['dataset'], plane)))
-    roots = [os.path.join(predict_config['data_path'], dims, predict_config['dataset'], plane, root) for root in roots]
+    roots = sorted(
+        os.listdir(
+            os.path.join(
+                predict_config["data_path"], dims, predict_config["dataset"], plane
+            )
+        )
+    )
+    roots = [
+        os.path.join(
+            predict_config["data_path"], dims, predict_config["dataset"], plane, root
+        )
+        for root in roots
+    ]
     print(roots)
 
     dices = 0
@@ -63,13 +74,15 @@ if __name__ == '__main__':
     #     writer.writerows(save_dices)
 
     # Print a report with the averages of those dice scores
-    print(f'AVG DICE: {dices / len(roots)}')
+    print(f"AVG DICE: {dices / len(roots)}")
 
     if not p.combine_labels:
         for i, key in enumerate(p.labels_dict):
-            print(f'{p.labels_dict[key]:<16}:  {class_wise_dices[i] / len(roots):.4f}')
+            print(f"{p.labels_dict[key]:<16}:  {class_wise_dices[i] / len(roots):.4f}")
     else:
         for i, label in enumerate(p.combine_labels):
             print(f'{", ".join(label):<64}:  {class_wise_dices[i] / len(roots):.4f}')
 
-    print(f'{PColour.OKGREEN}Time taken for inference on {len(roots)} samples: {time.time() - start:.2f} seconds.{PColour.ENDC}')
+    print(
+        f"{PColour.OKGREEN}Time taken for inference on {len(roots)} samples: {time.time() - start:.2f} seconds.{PColour.ENDC}"
+    )

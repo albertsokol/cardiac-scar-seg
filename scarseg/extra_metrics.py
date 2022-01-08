@@ -12,10 +12,10 @@ def volume(mask_image):
     # image = sitk.Image, mask or binary image (1 values where organ, 0 values otherwise)
     # Output:
     # vol = float, volume in mm3
-    space = mask_image.GetSpacing()         # image spacing
-    voxel = np.prod(space)                  # voxel volume
+    space = mask_image.GetSpacing()  # image spacing
+    voxel = np.prod(space)  # voxel volume
     img = sitk.GetArrayFromImage(mask_image)
-    vol = voxel*np.sum(img)
+    vol = voxel * np.sum(img)
 
     return vol
 
@@ -27,7 +27,9 @@ def get_results(num):
     label = None
     for folder in possible_folders:
         try:
-            label = sitk.ReadImage(f"/media/y4tsu/ml-fast/{folder}/3D/val/20CA015_N{num}/20CA015_N{num}_SAX_mask2.nii.gz")
+            label = sitk.ReadImage(
+                f"/media/y4tsu/ml-fast/{folder}/3D/val/20CA015_N{num}/20CA015_N{num}_SAX_mask2.nii.gz"
+            )
             break
         except RuntimeError:
             continue
@@ -71,7 +73,14 @@ def main():
         output += [list(result)]
 
     output = sorted(output, key=lambda x: x[0])
-    output = [["file", "ground truth scar volume", "predicted scar volume", "hausdorff distance"]] + output
+    output = [
+        [
+            "file",
+            "ground truth scar volume",
+            "predicted scar volume",
+            "hausdorff distance",
+        ]
+    ] + output
 
     with open("volume_hd_metrics.csv", "w") as f:
         writer = csv.writer(f)

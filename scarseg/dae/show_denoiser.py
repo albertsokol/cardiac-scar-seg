@@ -6,11 +6,11 @@ from matplotlib import pyplot as plt
 from scarseg.dae.denoiser import Denoiser
 from scarseg.generators import DAEGenerator
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     model = Denoiser("/home/y4tsu/PycharmProjects/3d_unet/checkpoint/denoiser_05", 8)
     gen = DAEGenerator(
         "/media/y4tsu/ml-fast/cmr/",
-        os.path.join("/media/y4tsu/ml-fast/cmr/", "2D", 'val', "transverse"),
+        os.path.join("/media/y4tsu/ml-fast/cmr/", "2D", "val", "transverse"),
         1,
         [144, 144],
         {
@@ -21,9 +21,9 @@ if __name__ == '__main__':
             "4": "rv lumen",
             "5": "rv myo",
             "6": "pap",
-            "7": "aorta"
+            "7": "aorta",
         },
-        dataset='val',
+        dataset="val",
         shuffle=True,
         use_cropper=False,
         zoom_aug=False,
@@ -41,4 +41,3 @@ if __name__ == '__main__':
     plt.imshow(np.argmax(y[0, ...], axis=-1), cmap="gray")
     plt.suptitle("y")
     plt.show()
-
