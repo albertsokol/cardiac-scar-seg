@@ -1,0 +1,14 @@
+Metadata-Version: 2.1
+Name: scarseg
+Version: 0.0.1
+Summary: Deep learning for cardiac MRI volume segmentation with a focus on scar tissue
+Home-page: UNKNOWN
+Author: Albert Sokol
+License: UNKNOWN
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3.9
+Requires-Python: >=3.9
+Provides-Extra: dev
+
+UNKNOWN
+

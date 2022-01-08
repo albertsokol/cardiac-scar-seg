@@ -1,6 +1,7 @@
 import numpy as np
 import tensorflow as tf
-from metrics import DiceMetric, ClassWiseDiceMetric
+
+from scarseg.metrics import DiceMetric, ClassWiseDiceMetric
 
 
 class Denoiser:

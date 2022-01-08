@@ -1,7 +1,7 @@
-from contextlib import ExitStack
 import json
 import os
 import time
+from contextlib import ExitStack
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -9,18 +9,18 @@ import tensorflow as tf
 from tensorflow.keras.utils import plot_model
 from tqdm import tqdm
 
-from augmenter import Augmenter2D, Augmenter3D
-from callbacks import LearningRatePrinter
-from generators import Generator2D, Generator2DPositional, Generator3DShallow, Generator3D, Generator3DFrozen
-from losses import (
+from scarseg.augmenter import Augmenter2D, Augmenter3D
+from scarseg.callbacks import LearningRatePrinter
+from scarseg.generators import Generator2D, Generator2DPositional, Generator3DShallow, Generator3D, Generator3DFrozen
+from scarseg.losses import (
     SoftmaxLoss,
     WeightedSoftmaxLoss,
     DiceLoss,
     WeightedSoftmaxDiceLoss,
     WeightedSoftmaxDiceLossPlusQuality,
 )
-from metrics import DiceMetric, ClassWiseDiceMetric
-from models import (
+from scarseg.metrics import DiceMetric, ClassWiseDiceMetric
+from scarseg.models import (
     UNet2D,
     UNet2DPositional,
     UNet3DShallow,
@@ -29,8 +29,8 @@ from models import (
     VNet,
     VNetShallow
 )
-from readers import NIIReader
-from util import PColour
+from scarseg.readers import NIIReader
+from scarseg.util import PColour
 
 
 class Trainer:

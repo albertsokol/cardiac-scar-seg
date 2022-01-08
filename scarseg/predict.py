@@ -7,11 +7,11 @@ import numpy as np
 import tensorflow as tf
 from scipy.special import softmax
 
-from cropper import Cropper
-from dae.denoiser import Denoiser
-from masker import Masker
-from metrics import DiceMetric, ClassWiseDiceMetric
-from readers import NIIReader, NPYReader
+from scarseg.cropper import Cropper
+from scarseg.dae.denoiser import Denoiser
+from scarseg.masker import Masker
+from scarseg.metrics import DiceMetric, ClassWiseDiceMetric
+from scarseg.readers import NIIReader, NPYReader
 
 
 def load_predictor(predict_config):

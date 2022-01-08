@@ -1,18 +1,14 @@
 """Used for finding the class-wise and average Dice scores of a model on a dataset (e.g., validation or test)."""
 
-import csv
-import os
 import json
+import os
 import time
 
-import nibabel as nib
 import numpy as np
 from tqdm import tqdm
 
-from predict import load_predictor
-from util import PColour
-from readers import NIIReader
-
+from scarseg.predict import load_predictor
+from scarseg.util import PColour
 
 if __name__ == '__main__':
     start = time.time()

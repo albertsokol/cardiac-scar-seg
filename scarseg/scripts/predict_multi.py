@@ -6,9 +6,9 @@ import numpy as np
 from scipy.special import softmax
 from tqdm import tqdm
 
-from predict import Predictor2D
-from readers import NIIReader
-from util import PColour
+from scarseg.predict import Predictor2D
+from scarseg.readers import NIIReader
+from scarseg.util import PColour
 
 
 def setup_predictors(data_path, dataset, path_tr, path_sag, path_cor):

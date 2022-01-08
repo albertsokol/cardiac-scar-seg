@@ -1,17 +1,15 @@
 """Run predictions, and then export the predicted segmentations to a .nii.gz file."""
 
-import csv
-import os
 import json
+import os
 import time
 
 import nibabel as nib
 import numpy as np
 from tqdm import tqdm
 
-from predict import load_predictor
-from util import PColour
-from readers import NIIReader
+from scarseg.predict import load_predictor
+from scarseg.readers import NIIReader
 
 
 def main():

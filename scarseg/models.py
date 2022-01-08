@@ -1,7 +1,6 @@
 from abc import ABC
 
 import tensorflow as tf
-from tensorflow.keras import applications
 from tensorflow.keras import layers
 from tensorflow.keras import models
 
