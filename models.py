@@ -103,6 +103,82 @@ class UNet2D(SegModel):
         return out
 
 
+class UNet2DPositional(UNet2D):
+    def __init__(
+        self,
+        input_size,
+        output_length,
+        quality_weighted_mode,
+        kernel_size=(3, 3),
+        transpose_kernel_size=(2, 2),
+        depth=4,
+    ):
+        super(UNet2DPositional, self).__init__(
+            input_size,
+            output_length,
+            quality_weighted_mode,
+            kernel_size,
+            transpose_kernel_size,
+            depth,
+        )
+
+    def define_architecture(self, image_input, position_input, final_activation='softmax', out_name='m'):
+        """ Build the UNet2D model. """
+        # Downsampling / encoding portion
+        conv0 = self.down_conv_block(image_input, 64)
+        pool0 = layers.MaxPooling2D((2, 2))(conv0)
+
+        conv1 = self.down_conv_block(pool0, 128)
+        pool1 = layers.MaxPooling2D((2, 2))(conv1)
+
+        conv2 = self.down_conv_block(pool1, 256)
+        pool2 = layers.MaxPooling2D((2, 2))(conv2)
+
+        # Middle of network
+        conv3 = self.down_conv_block(pool2, 512)
+
+        if self.depth == 4:
+            pool3 = layers.MaxPooling2D((2, 2))(conv3)
+
+            # Middle of network
+            conv4 = self.down_conv_block(pool3, 1024)
+
+            # Upsampling / decoding portion
+            uconv3 = self.up_conv_block(conv4, conv3, 512)
+            uconv2 = self.up_conv_block(uconv3, conv2, 256)
+        else:
+            # Upsampling / decoding portion
+            uconv2 = self.up_conv_block(conv3, conv2, 256)
+
+        uconv1 = self.up_conv_block(uconv2, conv1, 128)
+        uconv0 = self.up_conv_block(uconv1, conv0, 64)
+
+        # Broadcast here and concatenate the positional feature
+        position_input = tf.expand_dims(position_input, axis=-1)
+        position_input = tf.expand_dims(position_input, axis=-1)
+        position_input = tf.broadcast_to(input=position_input, shape=(tf.shape(position_input)[0], *self.input_size, 1))
+        uconv0 = tf.concat([uconv0, position_input], axis=-1, name="concat_position")
+
+        out = layers.Conv2D(self.output_length, (1, 1), padding='same', activation=None)(uconv0)
+        out = layers.Activation(final_activation, name=out_name)(out)
+
+        return out
+
+    def create_model(self):
+        """ Create a Model object which can be used for training. """
+        # Input is the 2D image size plus a dimension representing the channels
+        image_input = layers.Input((*self.input_size, 1), name='model_in')
+        position_input = layers.Input((1,), name="position_in")
+        model = models.Model(inputs=[image_input, position_input], outputs=self.define_architecture(image_input, position_input))
+
+        # if self.quality_weighted_mode:
+        #     in_shape = self.input_size[-1] if len(self.input_size) > 2 else 1
+        #     qw_in = layers.Input(in_shape, name='qw_in')
+        #     return models.Model(inputs=[model.input, qw_in], outputs=[layers.Layer(name='qw_out')(qw_in), model.output])
+        # else:
+        return model
+
+
 class UNet3D(SegModel):
     """ Implementation of UNet-3D as per the 2016 paper: https://arxiv.org/pdf/1606.06650.pdf """
     def __init__(self, input_size, output_length, quality_weighted_mode, kernel_size=(3, 3, 3), transpose_kernel_size=(2, 2, 2)):

@@ -1,5 +1,5 @@
 {
-  "model_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/3D_frozen_depth_plus_certainty",
+  "model_path": "/home/y4tsu/PycharmProjects/3d_unet/checkpoint/2D_positional_cropped",
   "data_path": "/media/y4tsu/ml-fast/cmr",
   "dataset": "val",
   "post_process": false
