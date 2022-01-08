@@ -27,6 +27,8 @@ def load_predictor(predict_config):
             p = Predictor3DShallow(**predict_config, train_config=train_config)
         elif train_config['model'] in ['UNet3DFrozenDepth']:
             p = Predictor3DFrozenDepth(**predict_config, train_config=train_config)
+        elif train_config["model"] in ["UNet2DPositional"]:
+            p = Predictor2DPositional(**predict_config, train_config=train_config)
         else:
             p = Predictor2D(**predict_config, train_config=train_config)
     elif isinstance(predict_config['model_path'], list):
@@ -400,6 +402,43 @@ class Predictor2D(__Predictor):
         pred_logits = np.moveaxis(pred_logits, [0, 1, 2], [2, 0, 1])
 
         return image, label, pred_logits
+
+
+class Predictor2DPositional(Predictor2D):
+    def __init__(self, data_path, dataset, model_path, train_config, post_process):
+        super().__init__(data_path, dataset, model_path, train_config, post_process)
+
+    @staticmethod
+    def embed_position(index: int) -> float:
+        """Given the index of a slice in a scan, get a positional embedding which can be input to the model."""
+        return (index - 7.5) / 7.5
+
+    def predict(self, fname=None, display=False, apply_combine=True, return_fname=False):
+        images, labels, fname = self.load_image_label(fname)
+        pred_label = np.empty(images.shape[:-1], dtype=np.int8)
+
+        for i in range(images.shape[0]):
+            curr_pred = self.model.predict((images[i, np.newaxis, ...], np.array([self.embed_position(i)], dtype=np.float32)))
+            pred_label[i, ...] = np.squeeze(np.argmax(curr_pred, axis=-1))
+
+        image = np.moveaxis(np.squeeze(images), [0, 1, 2], [2, 0, 1])
+        label = np.moveaxis(labels, [0, 1, 2], [2, 0, 1])
+        pred_label = np.moveaxis(pred_label, [0, 1, 2], [2, 0, 1])
+
+        if self.combine_labels and apply_combine:
+            label = self.apply_label_combine(label)
+
+        if self.post_process:
+            pred_label = self.post_process_label(pred_label)
+
+        if display:
+            print(self.calculate_dice(label, pred_label))
+            self.display(image, label, pred_label)
+
+        if return_fname:
+            return image, label, pred_label, fname
+        else:
+            return image, label, pred_label
 
 
 class Predictor3DShallow(__Predictor):

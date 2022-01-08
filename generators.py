@@ -433,6 +433,73 @@ class Generator2D(__Generator):
         return self.quality_weighting_scores[str(self.quality_weightings_dict[curr_root][curr_slice])]
 
 
+class Generator2DPositional(Generator2D):
+    def __init__(
+        self,
+        model_save_path,
+        generic_data_path,
+        data_path,
+        plane,
+        batch_size,
+        image_size,
+        labels,
+        dataset,
+        shuffle=True,
+        augmenter=None,
+        use_cropper=False,
+        combine_labels=None,
+        cascade=None,
+        quality_weighting_scores=None,
+    ):
+        super().__init__(
+            model_save_path,
+            generic_data_path,
+            data_path,
+            plane,
+            batch_size,
+            image_size,
+            labels,
+            dataset,
+            shuffle,
+            augmenter,
+            use_cropper,
+            combine_labels,
+            cascade,
+            quality_weighting_scores,
+        )
+
+    @staticmethod
+    def embed_position(index: int) -> float:
+        """Given the index of a slice in a scan, get a positional embedding which can be input to the model."""
+        return (index - 7.5) / 7.5
+
+    def get_data(self, batch_indices, weight_mode):
+        # Initialise empty arrays for the training data and labels
+        x = np.empty([self.batch_size, *self.image_size, 1], dtype=np.float32)
+        pos_embeddings = np.empty([self.batch_size], dtype=np.float32)
+        if self.combine_labels:
+            y = np.empty([self.batch_size, *self.image_size, len(self.combine_labels)], dtype=np.int8)
+        else:
+            y = np.empty([self.batch_size, *self.image_size, len(self.labels)], dtype=np.int8)
+
+        # Get the training data
+        for i, index in enumerate(batch_indices):
+            img, fname = self.read_file(index, self.image_fnames)
+            label, fname = self.read_file(index, self.label_fnames)
+            img = self.reader.normalize(img)
+            slice_index = int(fname.split("_")[3])
+            pos_embeddings[i] = self.embed_position(slice_index)
+
+            # Apply data augmentation if option is turned on
+            if self.augmenter and not weight_mode:
+                img, label = self.augmenter.augment(img, label)
+
+            x[i, ...] = self.prepare_img(img, fname)
+            y[i, ...] = self.prepare_label(label, fname)
+
+        return {'model_in': x, 'position_in': pos_embeddings}, y
+
+
 class Generator3DShallow(Generator2D):
     """Class for 3D shallow quality weighting scores."""
     def __init__(

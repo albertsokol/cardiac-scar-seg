@@ -11,7 +11,7 @@ from tqdm import tqdm
 
 from augmenter import Augmenter2D, Augmenter3D
 from callbacks import LearningRatePrinter
-from generators import Generator2D, Generator3DShallow, Generator3D, Generator3DFrozen
+from generators import Generator2D, Generator2DPositional, Generator3DShallow, Generator3D, Generator3DFrozen
 from losses import (
     SoftmaxLoss,
     WeightedSoftmaxLoss,
@@ -22,6 +22,7 @@ from losses import (
 from metrics import DiceMetric, ClassWiseDiceMetric
 from models import (
     UNet2D,
+    UNet2DPositional,
     UNet3DShallow,
     UNet3D,
     UNet3DFrozenDepth,
@@ -81,6 +82,10 @@ class Trainer:
             self.augmenter = Augmenter3D(**augmentation)
             assert plane in ["transverse", "sagittal",
                              "coronal"], "Plane must be one of: 'transverse', 'sagittal', 'coronal'"
+        elif model in ["UNet2DPositional"]:
+            self.dimensionality = "2DPositional"
+            self.data_root = "2D"
+            self.augmenter = Augmenter2D(**augmentation)
         else:
             self.dimensionality = '2D'
             self.data_root = '2D'
@@ -98,6 +103,7 @@ class Trainer:
             "UNet3DFrozenDepth": UNet3DFrozenDepth,
             "UNet3DShallow": UNet3DShallow,
             "UNet2D": UNet2D,
+            "UNet2DPositional": UNet2DPositional,
             "VNet": VNet,
             "VNetShallow": VNetShallow,
         }
@@ -105,6 +111,7 @@ class Trainer:
             "3D": Generator3D,
             "3DFrozen": Generator3DFrozen,
             "3DShallow": Generator3DShallow,
+            "2DPositional": Generator2DPositional,
             "2D": Generator2D,
         }
 
