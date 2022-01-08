@@ -3,10 +3,12 @@
 /workspace.xml
 
 /.idea/
-/checkpoint/
+checkpoint/
+scarseg.egg-info/
 
 quality_scores.json
 train_config.json
-/box_test/
-/dice_res/
-/saved_preds/
+
+box_test/
+dice_res/
+saved_preds/
