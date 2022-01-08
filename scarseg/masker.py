@@ -1,12 +1,10 @@
-import json
 import os
 import time
 
 import numpy as np
 from tqdm import tqdm
 
-from readers import NIIReader
-from util import PColour
+from scarseg.util import PColour
 
 
 class Masker:

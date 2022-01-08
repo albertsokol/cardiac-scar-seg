@@ -1,11 +1,8 @@
 from abc import ABC
 
-import os
-from tqdm import tqdm
-import matplotlib.pyplot as plt
+import elasticdeform
 import numpy as np
 import scipy.ndimage as snd
-import elasticdeform
 
 
 class __Augmenter(ABC):

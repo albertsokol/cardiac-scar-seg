@@ -5,7 +5,6 @@ import os
 
 import SimpleITK as sitk
 import numpy as np
-from readers import NIIReader
 
 
 def volume(mask_image):

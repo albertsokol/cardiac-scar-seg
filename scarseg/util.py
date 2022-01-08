@@ -1,21 +1,17 @@
 """Various utility functions for working with the data and models."""
-import csv
 import json
 import os
-import random
 
-import pandas as pd
-from PIL import Image
 import nibabel as nib
 import numpy as np
+import pandas as pd
 from matplotlib import pyplot as plt
-from matplotlib import rcParams
-from scipy.ndimage import rotate
 from scipy import stats
+from scipy.ndimage import rotate
 from tqdm import tqdm
 
-from cropper import Cropper
-from readers import NIIReader, NPYReader
+from scarseg.cropper import Cropper
+from scarseg.readers import NIIReader, NPYReader
 
 
 class PColour:

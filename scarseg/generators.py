@@ -5,12 +5,11 @@ from abc import ABC
 import numpy as np
 from tensorflow import one_hot
 from tensorflow.keras.utils import Sequence
-from tqdm import tqdm
 
-from augmenter import Augmenter2D
-from readers import NIIReader, NPYReader
-from cropper import Cropper
-from masker import Masker
+from scarseg.augmenter import Augmenter2D
+from scarseg.cropper import Cropper
+from scarseg.masker import Masker
+from scarseg.readers import NIIReader, NPYReader
 
 
 class __Generator(Sequence, ABC):

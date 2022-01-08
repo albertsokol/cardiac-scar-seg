@@ -1,19 +1,19 @@
-import matplotlib.pyplot as plt
-import numpy as np
-import tensorflow as tf
 import json
 import os
 import time
+
+import matplotlib.pyplot as plt
+import numpy as np
+import tensorflow as tf
+from tensorflow.keras.utils import plot_model
 from tqdm import tqdm
 
-from tensorflow.keras.utils import plot_model
-
-from callbacks import LearningRatePrinter
-from generators import DAEGenerator
-from losses import WeightedSoftmaxLoss
-from metrics import DiceMetric, ClassWiseDiceMetric
-from models import DenoisingUNet
-from util import PColour
+from scarseg.callbacks import LearningRatePrinter
+from scarseg.generators import DAEGenerator
+from scarseg.losses import WeightedSoftmaxLoss
+from scarseg.metrics import DiceMetric, ClassWiseDiceMetric
+from scarseg.models import DenoisingUNet
+from scarseg.util import PColour
 
 
 class DAETrainer:

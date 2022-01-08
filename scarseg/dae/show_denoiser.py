@@ -1,9 +1,10 @@
-from denoiser import Denoiser
-from generators import DAEGenerator
-from matplotlib import pyplot as plt
 import os
-import numpy as np
 
+import numpy as np
+from matplotlib import pyplot as plt
+
+from scarseg.dae.denoiser import Denoiser
+from scarseg.generators import DAEGenerator
 
 if __name__ == '__main__':
     model = Denoiser("/home/y4tsu/PycharmProjects/3d_unet/checkpoint/denoiser_05", 8)
