@@ -12,10 +12,16 @@ This repo contains the code for training and evaluating the models for the proje
 
 ## Installation 
 
-To install the required packages in a conda environment, use the following command:
+To install for usage only, in a Python 3.9 virtual environment:
 
 ```shell script
-conda create --name <env> --file requirements.txt
+pip install .
+```
+
+To install for development:
+
+```shell script
+pip install -e . 
 ```
 
 ## Files
