@@ -2,11 +2,13 @@ import json
 import os
 import time
 from contextlib import ExitStack
+from pathlib import Path
 
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.utils import plot_model
+from tensorflow.keras.callbacks import TensorBoard
 from tqdm import tqdm
 
 from scarseg.augmenter import Augmenter2D, Augmenter3D
@@ -202,9 +204,9 @@ class Trainer:
         print(f'Calculating label weightings across {len(self.train_gen.image_fnames)} label images for use in loss'
               f' function, may take a while ... ')
         if self.combine_labels:
-            sums = np.zeros(len(self.combine_labels))
+            sums = np.zeros(len(self.combine_labels), dtype=np.float32)
         else:
-            sums = np.zeros(len(self.labels))
+            sums = np.zeros(len(self.labels), dtype=np.float32)
         for i in tqdm(range(len(self.train_gen.image_fnames) // self.batch_size)):
             _, label_img = self.train_gen.__getitem__(i, weight_mode=True)
             # Get the number of labelled voxels of each class for each label image
@@ -354,7 +356,8 @@ class Trainer:
 
 
 if __name__ == '__main__':
-    with open('train_config.json', 'r') as r:
+    root_path = Path(__file__)
+    with open(root_path.parent / 'train_config.json', 'r') as r:
         config = json.load(r)
 
     Trainer(**config).train()

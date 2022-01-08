@@ -88,7 +88,7 @@ class __Generator(Sequence, ABC):
             raise IndexError('Index not within possible range (0 to number of training steps)')
         # Generate the data
         x, y = self.get_data(indices, weight_mode)
-        return x, y
+        return x, y.astype(np.float32)
 
     def get_data(self, batch_indices, weight_mode):
         # Initialise empty arrays for the training data and labels

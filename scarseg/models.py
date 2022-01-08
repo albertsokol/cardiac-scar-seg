@@ -20,7 +20,7 @@ class SegModel(ABC):
     def create_model(self):
         """ Create a Model object which can be used for training. """
         # Input is the 2D image size plus a dimension representing the channels
-        model_input = layers.Input((*self.input_size, 1), name='model_in')
+        model_input = layers.Input((*self.input_size, 1), name='model_in', dtype=tf.float32)
         model = models.Model(inputs=model_input, outputs=self.define_architecture(model_input))
 
         if self.quality_weighted_mode:

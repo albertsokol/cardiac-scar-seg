@@ -5,8 +5,8 @@ from tensorflow.keras.losses import Loss
 
 class __Loss(Loss):
     """ Generic methods for all loss functions. """
-    def __init__(self, batch_size, **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self, batch_size):
+        super().__init__()
         self.batch_size = batch_size
 
     @staticmethod
@@ -16,10 +16,7 @@ class __Loss(Loss):
         num_voxels = tf.math.reduce_prod(shape)
         return tf.cast(num_voxels, tf.float32)
 
-    def get_config(self):
-        return super().get_config()
-
-    def call(self, *args, **kwargs):
+    def call(self, y_true, y_pred):
         raise NotImplementedError
 
     @staticmethod
@@ -34,11 +31,8 @@ class SoftmaxLoss(__Loss):
     def __init__(self, batch_size):
         super().__init__(batch_size)
 
-    def call(self, *args, **kwargs):
-        y_true, y_pred = args[0], args[1]
-
+    def call(self, y_true, y_pred):
         loss = - K.sum(y_true * K.log(self.clip(y_pred)))
-
         # Return loss normalized by batch size and image size for stable LRs across different input sizes
         return loss / self.get_num_vox(y_pred)
 
@@ -49,9 +43,7 @@ class WeightedSoftmaxLoss(__Loss):
         super().__init__(batch_size)
         self.label_weights = label_weights
 
-    def call(self, *args, **kwargs):
-        y_true, y_pred = args[0], args[1]
-
+    def call(self, y_true, y_pred):
         # label_weights is be a len(labels) length vector of voxel weights for each label
         loss = - K.sum(self.label_weights * y_true * K.log(self.clip(y_pred)))
 
@@ -64,8 +56,8 @@ class DiceLoss(__Loss):
     def __init__(self, batch_size):
         super().__init__(batch_size)
 
-    def call(self, *args, **kwargs):
-        y_true, y_pred = K.flatten(args[0]), K.flatten(args[1])
+    def call(self, y_true, y_pred):
+        y_true, y_pred = K.flatten(y_true), K.flatten(y_pred)
 
         numerator = 2 * K.sum(y_true * y_pred) + 1e-7
         denominator = K.sum(y_true) + K.sum(y_pred) + 1e-7
@@ -91,9 +83,7 @@ class WeightedSoftmaxDiceLoss(__Loss):
         self.label_weights = label_weights
         self.dice_weight = dice_weight
 
-    def call(self, *args, **kwargs):
-        y_true, y_pred = args[0], args[1]
-
+    def call(self, y_true, y_pred):
         # First, get the softmax loss
         softmax_loss = - K.sum(self.label_weights * y_true * K.log(self.clip(y_pred)))
         softmax_loss /= self.get_num_vox(y_pred)
@@ -135,9 +125,7 @@ class WeightedSoftmaxDiceLossPlusQuality(__Loss):
             self.qw_out_name = ["ExpandDims:0"]
             self.sum_axes = [1, 2, 3]
 
-    def call(self, *args, **kwargs):
-        y_true, y_pred = args[0], args[1]
-
+    def call(self, y_true, y_pred):
         # Update the quality for the current slice if the current call is for the 'qw_out' tensor
         if any([x in y_pred.name for x in self.qw_out_name]):
             if self.full_3d_mode:
