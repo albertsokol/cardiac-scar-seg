@@ -109,6 +109,17 @@ For denoising auto-encoders, the process is:
 2. Run `dae_trainer.py` to train a denoising auto-encoder using that configuration
 3. Set `"post_process"` in `predict_config.json` as the path to the newly trained model to use it for post-processing outputs 
 
+### Tensorboard
+
+To view all Dice scores and losses during training, Tensorboard is integrated in this repo. After starting a training 
+run, pass the following command in a new terminal to open Tensorboard:
+
+```shell script
+tensorboard --logdir ./logs
+```
+
+And navigate to `http://localhost:6006/` to view graphs.
+
 ## Training settings: `train_config.json`
 
 All the training settings you might need to adjust are found in `train_config.json`. Update this file, then run `trainer.py` to train new models 

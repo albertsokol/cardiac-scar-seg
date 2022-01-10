@@ -4,7 +4,6 @@ import time
 from contextlib import ExitStack
 from pathlib import Path
 
-import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras.utils import plot_model
@@ -151,7 +150,8 @@ class Trainer:
                 save_best_only=True,
                 verbose=1,
                 mode="max",
-            )
+            ),
+            TensorBoard("./logs"),
         ]
 
         loss_dict = {
@@ -268,82 +268,6 @@ class Trainer:
             print("Training with 10x reduced LR for epoch 1 for warmup ... ")
             return self.lr / 10.0
 
-    def plot(self, history):
-        # Plot the losses and dice coefficients for the model
-        prefix = "m_" if self.quality_weighted_mode else ""
-        colors = [
-            "coral",
-            "dodgerblue",
-            "teal",
-            "darkorchid",
-            "crimson",
-            "limegreen",
-            "hotpink",
-            "mediumblue",
-            "darkorange",
-            "navy",
-            "darkslategrey",
-            "purple",
-            "maroon",
-            "green",
-            "deeppink",
-            "navy",
-        ]
-
-        fig, axs = plt.subplots(nrows=2, ncols=2)
-        fig.set_size_inches(8, 12)
-
-        t_loss_hx = history.history[f"{prefix}loss"]
-        v_loss_hx = history.history[f"val_{prefix}loss"]
-        axs[0, 0].plot(
-            range(1, 1 + len(t_loss_hx)), t_loss_hx, "r-", label="train loss"
-        )
-        axs[0, 0].plot(range(1, 1 + len(v_loss_hx)), v_loss_hx, "b-", label="val loss")
-        axs[0, 0].set(xlabel="epochs", ylabel="loss")
-        axs[0, 0].legend(loc="upper right")
-
-        t_dice_hx = history.history[f"{prefix}dice"]
-        v_dice_hx = history.history[f"val_{prefix}dice"]
-        axs[0, 1].plot(
-            range(1, 1 + len(t_dice_hx)), t_dice_hx, "r-", label="train dice"
-        )
-        axs[0, 1].plot(range(1, 1 + len(v_dice_hx)), v_dice_hx, "b-", label="val dice")
-        axs[0, 1].set(xlabel="epochs", ylabel="dice coefficient")
-        axs[0, 1].legend(loc="lower right")
-
-        t_class_dx_labels = [
-            x
-            for x in list(history.history.keys())
-            if "val" not in x and "loss" not in x and "dice" not in x
-        ]
-        v_class_dx_labels = [
-            x
-            for x in list(history.history.keys())
-            if "val" in x and "loss" not in x and "dice" not in x
-        ]
-
-        for x in t_class_dx_labels:
-            curr_hx = history.history[x]
-            color = colors.pop(0)
-            axs[1, 0].plot(
-                range(1, 1 + len(curr_hx)), curr_hx, color=color, label=f"{x} dice"
-            )
-
-        for x in v_class_dx_labels:
-            curr_hx = history.history[x]
-            color = colors.pop(0)
-            axs[1, 1].plot(
-                range(1, 1 + len(curr_hx)), curr_hx, color=color, label=f"{x} dice"
-            )
-
-        axs[1, 0].set(xlabel="epochs", ylabel="dice coefficient")
-        axs[1, 0].legend(loc="lower right")
-
-        axs[1, 1].set(xlabel="epochs", ylabel="dice coefficient")
-        axs[1, 1].legend(loc="lower right")
-
-        plt.show()
-
     def train(self):
         """Train the model."""
         with ExitStack() as context:
@@ -402,9 +326,14 @@ class Trainer:
 
         print(f"{PColour.OKBLUE}Compiled model! Starting training ... {PColour.ENDC}")
 
+        # Save the config that was used so that e.g., image size can be retrieved later for prediction
+        with open(f"{self.model_save_path}/train_config.json", "w") as f:
+            f.write(json.dumps(config, indent=4))
+        print(f"Saved training config to {self.model_save_path}/train_config.json")
+
         start = time.time()
 
-        history = model.fit(
+        model.fit(
             self.train_gen,
             validation_data=self.val_gen,
             epochs=self.num_epochs,
@@ -416,14 +345,6 @@ class Trainer:
         print(
             f"{PColour.OKGREEN}Finished training - took {(time.time() - start) / 60.:.2f} minutes.{PColour.ENDC}"
         )
-
-        # Save the config that was used so that e.g., image size can be retrieved later for prediction
-        with open(f"{self.model_save_path}/train_config.json", "w") as f:
-            f.write(json.dumps(config, indent=4))
-        print(f"Saved training config to {self.model_save_path}/train_config.json")
-
-        # Plot the losses
-        self.plot(history)
 
 
 if __name__ == "__main__":

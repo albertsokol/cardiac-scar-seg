@@ -16,6 +16,7 @@ class SegModel(ABC):
         kernel_size,
         transpose_kernel_size,
     ):
+        self.activation = "relu"
         self.input_size = input_size
         self.output_length = output_length
         self.quality_weighted_mode = quality_weighted_mode
@@ -71,14 +72,14 @@ class UNet2D(SegModel):
 
     def down_conv_block(self, m, filters):
         """2D down-convolution block."""
-        m = layers.Conv2D(filters, self.kernel_size, padding="same", activation="relu")(
-            m
-        )
+        m = layers.Conv2D(
+            filters, self.kernel_size, padding="same", activation=self.activation
+        )(m)
         m = layers.BatchNormalization()(m)
 
-        m = layers.Conv2D(filters, self.kernel_size, padding="same", activation="relu")(
-            m
-        )
+        m = layers.Conv2D(
+            filters, self.kernel_size, padding="same", activation=self.activation
+        )(m)
         m = layers.BatchNormalization()(m)
 
         return m
@@ -90,15 +91,15 @@ class UNet2D(SegModel):
             self.transpose_kernel_size,
             strides=(2, 2),
             padding="same",
-            activation="relu",
+            activation=self.activation,
         )(m)
         m = layers.BatchNormalization()(m)
 
         m = layers.Concatenate()([m, prev])
 
-        m = layers.Conv2D(filters, self.kernel_size, padding="same", activation="relu")(
-            m
-        )
+        m = layers.Conv2D(
+            filters, self.kernel_size, padding="same", activation=self.activation
+        )(m)
         m = layers.BatchNormalization()(m)
 
         return m
@@ -252,12 +253,12 @@ class UNet3D(SegModel):
     def down_conv_block(self, m, filters_a, filters_b):
         """3D down-convolution block."""
         m = layers.Conv3D(
-            filters_a, self.kernel_size, padding="same", activation="relu"
+            filters_a, self.kernel_size, padding="same", activation=self.activation
         )(m)
         m = layers.BatchNormalization()(m)
 
         m = layers.Conv3D(
-            filters_b, self.kernel_size, padding="same", activation="relu"
+            filters_b, self.kernel_size, padding="same", activation=self.activation
         )(m)
         m = layers.BatchNormalization()(m)
 
@@ -270,19 +271,19 @@ class UNet3D(SegModel):
             self.transpose_kernel_size,
             strides=(2, 2, 2),
             padding="same",
-            activation="relu",
+            activation=self.activation,
         )(m)
         m = layers.BatchNormalization()(m)
 
         m = layers.Concatenate()([m, prev])
 
         m = layers.Conv3D(
-            filters_b, self.kernel_size, padding="same", activation="relu"
+            filters_b, self.kernel_size, padding="same", activation=self.activation
         )(m)
         m = layers.BatchNormalization()(m)
 
         m = layers.Conv3D(
-            filters_b, self.kernel_size, padding="same", activation="relu"
+            filters_b, self.kernel_size, padding="same", activation=self.activation
         )(m)
         m = layers.BatchNormalization()(m)
 
@@ -340,12 +341,12 @@ class UNet3DFrozenDepth(SegModel):
     def down_conv_block(self, m, filters_a, filters_b):
         """3D down-convolution block."""
         m = layers.Conv3D(
-            filters_a, self.kernel_size, padding="same", activation="relu"
+            filters_a, self.kernel_size, padding="same", activation=self.activation
         )(m)
         m = layers.BatchNormalization()(m)
 
         m = layers.Conv3D(
-            filters_b, self.kernel_size, padding="same", activation="relu"
+            filters_b, self.kernel_size, padding="same", activation=self.activation
         )(m)
         m = layers.BatchNormalization()(m)
 
@@ -358,19 +359,19 @@ class UNet3DFrozenDepth(SegModel):
             self.transpose_kernel_size,
             strides=(2, 2, 1),
             padding="same",
-            activation="relu",
+            activation=self.activation,
         )(m)
         m = layers.BatchNormalization()(m)
 
         m = layers.Concatenate()([m, prev])
 
         m = layers.Conv3D(
-            filters_b, self.kernel_size, padding="same", activation="relu"
+            filters_b, self.kernel_size, padding="same", activation=self.activation
         )(m)
         m = layers.BatchNormalization()(m)
 
         m = layers.Conv3D(
-            filters_b, self.kernel_size, padding="same", activation="relu"
+            filters_b, self.kernel_size, padding="same", activation=self.activation
         )(m)
         m = layers.BatchNormalization()(m)
 
@@ -445,12 +446,12 @@ class UNet3DShallow(SegModel):
     def down_conv_block(self, m, filters_a, filters_b):
         """3D down-convolution block."""
         m = layers.Conv3D(
-            filters_a, self.kernel_size, padding="same", activation="relu"
+            filters_a, self.kernel_size, padding="same", activation=self.activation
         )(m)
         m = layers.BatchNormalization()(m)
 
         m = layers.Conv3D(
-            filters_b, self.kernel_size, padding="same", activation="relu"
+            filters_b, self.kernel_size, padding="same", activation=self.activation
         )(m)
         m = layers.BatchNormalization()(m)
 
@@ -463,19 +464,19 @@ class UNet3DShallow(SegModel):
             self.transpose_kernel_size,
             strides=(2, 2, 1),
             padding="same",
-            activation="relu",
+            activation=self.activation,
         )(m)
         m = layers.BatchNormalization()(m)
 
         m = layers.Concatenate()([m, prev])
 
         m = layers.Conv3D(
-            filters_b, self.kernel_size, padding="same", activation="relu"
+            filters_b, self.kernel_size, padding="same", activation=self.activation
         )(m)
         m = layers.BatchNormalization()(m)
 
         m = layers.Conv3D(
-            filters_b, self.kernel_size, padding="same", activation="relu"
+            filters_b, self.kernel_size, padding="same", activation=self.activation
         )(m)
         m = layers.BatchNormalization()(m)
 

@@ -1,6 +1,9 @@
 """Various utility functions for working with the data and models."""
 import json
 import os
+import random
+import shutil
+from pathlib import Path
 
 import nibabel as nib
 import numpy as np
@@ -122,45 +125,113 @@ def analyse_quality_labels_class_wise():
     plt.savefig("plot/slice_certainty_class_wise.png", dpi=300, bbox_inches="tight")
 
 
+def get_necessary_files_only():
+    """Save to disk all the necessary files from the original data archive."""
+    base_folder = Path("/media/y4tsu/4B172BDA26AB3054/cmr_full")
+    roots = sorted([x for x in base_folder.iterdir() if x.is_dir()])
+    print(f"{len(roots)=}")
+
+    new_base_folder = Path("/media/y4tsu/4B172BDA26AB3054/cmr_clean")
+    new_base_folder.mkdir(parents=False, exist_ok=True)
+    copied = 0
+
+    for root in tqdm(roots):
+        file_num = root.stem[-3:]
+        label_path = root / "Assessor 2" / f"20CA015_N{file_num}_SAX_mask2.nii.gz"
+        if not label_path.is_file():
+            print(f"Label file not found: {label_path}")
+            continue
+        image_path = root / f"20CA015_N{file_num}_SAX.nii.gz"
+        if not image_path.is_file():
+            print(f"Image file not found: {image_path}")
+            continue
+        new_root_folder = new_base_folder / f"20CA015_N{file_num}"
+        new_root_folder.mkdir(parents=False, exist_ok=True)
+        shutil.copy(label_path, new_root_folder / label_path.name)
+        shutil.copy(image_path, new_root_folder / image_path.name)
+        copied += 1
+
+    print(f"Finished copying {copied} files.")
+
+
+def search_incorrect_orientations():
+    """
+    Look through all the available images to find those which are malrotated with respect to the majority so that they
+    can be fixed.
+    """
+    reader = NIIReader()
+    base_folder = Path("/media/y4tsu/4B172BDA26AB3054/cmr_clean")
+    roots = sorted([x for x in base_folder.iterdir() if x.is_dir()])
+    print(f"{len(roots)=}")
+
+    for root in roots:
+        print(f"Reading root {root}")
+        file_num = root.stem[-3:]
+        image = np.squeeze(reader.read(root / f"20CA015_N{file_num}_SAX.nii.gz"))
+        print(f"{image[:20, ...].sum()=}")
+        reader.scroll_view(image)
+
+
 def rotate_incorrect_orientations():
     """
     Rotate a list of manually specified images by 90 degrees anti-clockwise so that all images are in the same
     orientation to simplify the learning task.
     """
     reader = NIIReader()
-    base_folder = "/media/y4tsu/ml-fast/cmr/3D/test"
+    base_folder = Path("/media/y4tsu/4B172BDA26AB3054/cmr_clean")
+    roots = sorted([x for x in base_folder.iterdir() if x.is_dir()])
+    print(f"{len(roots)=}")
 
-    roots = sorted(os.listdir(base_folder))
-    ax_thickness = []
-    hw = []
-    squares = 0
-    print(f"{len(roots)} total scans found")
+    non_squares = []
 
     for i, root in enumerate(roots):
-        image = np.squeeze(
-            reader.read(os.path.join(base_folder, root, f"{root}_SAX.nii.gz"))
-        )
+        file_num = root.stem[-3:]
+        image = np.squeeze(reader.read(root / f"20CA015_N{file_num}_SAX.nii.gz"))
         shape = image.shape
-        label = np.squeeze(
-            reader.read(os.path.join(base_folder, root, f"{root}_SAX_mask2.nii.gz"))
-        )
+        label = np.squeeze(reader.read(root / f"20CA015_N{file_num}_SAX_mask2.nii.gz"))
 
-        print(root)
-        if root in [
-            "20CA015_N008",
-            "20CA015_N083",
-            "20CA015_N089",
-            "20CA015_N138",
-            "20CA015_N141",
-            "20CA015_N144",
-            "20CA015_N174",
-            "20CA015_N307",
-            "20CA015_N319",
-            "20CA015_N227",
+        if shape[0] != shape[1]:
+            print(f"{root} is non-square")
+            non_squares += [root]
+
+        if file_num in [
+            "008",
+            "014",
+            "024",
+            "030",
+            "062",
+            "064",
+            "083",
+            "089",
+            "135",
+            "138",
+            "141",
+            "144",
+            "156",
+            "159",
+            "168",
+            "174",
+            "181",
+            "192",
+            "213",
+            "215",
+            "227",
+            "262",
+            "278",
+            "294",
+            "304",
+            "307",
+            "319",
+            "330",
+            "347",
+            "348",
+            "353",
+            "355",
+            "375",
         ]:
             # Show the original image
-            plt.imshow(label[:, :, 5], cmap="gray")
-            plt.show()
+            # plt.imshow(label[:, :, 5], cmap="gray")
+            # plt.show()
 
             # Rotate the bad images and labels
             rot_image = rotate(image, axes=(0, 1), angle=-90.0, reshape=False, order=3)
@@ -171,139 +242,189 @@ def rotate_incorrect_orientations():
             new_label = nib.Nifti1Image(rot_label, np.eye(4))
 
             # Save them, overwriting the original files
-            nib.save(new_img, os.path.join(base_folder, root, f"{root}_SAX.nii.gz"))
-            nib.save(
-                new_label, os.path.join(base_folder, root, f"{root}_SAX_mask2.nii.gz")
-            )
+            nib.save(new_img, root / f"20CA015_N{file_num}_SAX.nii.gz")
+            nib.save(new_label, root / f"20CA015_N{file_num}_SAX_mask2.nii.gz")
 
             # Show the newly rotated image
-            plt.imshow(rot_label[:, :, 5], cmap="gray")
-            plt.show()
+            # plt.imshow(rot_label[:, :, 5], cmap="gray")
+            # plt.show()
 
-        if shape[0] != shape[1]:
-            print(f"{root} is non-square")
-
-        hw += [shape[0]]
-        ax_thickness += [shape[2]]
-        squares += 1 if shape[0] == shape[1] else 0
-
-    print(f"num squares: {squares}")
-    fig, axs = plt.subplots(2, 1)
-    axs[0].hist(ax_thickness)
-    axs[1].hist(hw)
-    plt.show()
+    print(f"{len(non_squares)=}")
 
 
-def create_2d_dataset(root):
+def create_3d_dataset():
+    """From the clean image folder, create a 5-fold cross validation random split dataset."""
+    dataset_folder = Path("/media/y4tsu/4B172BDA26AB3054/cmr_folds")
+    dataset_folder.mkdir(parents=False, exist_ok=True)
+    base_folder = Path("/media/y4tsu/4B172BDA26AB3054/cmr_clean")
+    roots = [x for x in base_folder.iterdir() if x.is_dir()]
+    random.seed(99)
+    random.shuffle(roots)
+    print(f"{len(roots)=}")
+    print(roots)
+    num_folds = 5
+    fold_size = len(roots) // 5
+    extras = len(roots) - (fold_size * num_folds)
+
+    for i in range(num_folds):
+        fold_folder = dataset_folder / str(i)
+        fold_folder.mkdir(parents=False, exist_ok=True)
+        curr_data_folder = fold_folder / "3D"
+        curr_data_folder.mkdir(parents=False, exist_ok=True)
+        curr_train_folder = curr_data_folder / "train"
+        curr_train_folder.mkdir(parents=False, exist_ok=True)
+        curr_val_folder = curr_data_folder / "val"
+        curr_val_folder.mkdir(parents=False, exist_ok=True)
+
+        curr_val = roots[i * fold_size : (i + 1) * fold_size]
+        print(f"{len(curr_val)=}")
+        for root in curr_val:
+            shutil.copytree(root, curr_val_folder / root.name)
+
+        curr_train = [root for root in roots[:-extras] if root not in curr_val]
+        print(f"{len(curr_train)=}")
+        for root in curr_train:
+            shutil.copytree(root, curr_train_folder / root.name)
+
+    # Deal with the extra roots which didn't divide evenly by randomly assigning them to a fold
+    chosen = []
+    for extra in range(extras):
+        i = extra + 1
+        while True:
+            add_to = random.choice(list(range(num_folds)))
+            if add_to in chosen:
+                continue
+            else:
+                break
+        chosen += [add_to]
+        root = roots[len(roots) - i]
+        print(f"extra root: {root}")
+        print(f"{add_to=}")
+        for j in range(num_folds):
+            if j == add_to:
+                add_folder = dataset_folder / str(j) / "3D" / "val"
+            else:
+                add_folder = dataset_folder / str(j) / "3D" / "train"
+            shutil.copytree(root, add_folder / root.name)
+
+
+def create_2d_dataset():
     """
     Create the 2D images and labels slices so that they can be loaded quickly in a shuffled order during training.
-
-    :param root: str: path to the data root (one level up from the '3D' folder)
     """
-    print(f'Creating 2D dataset from data at {os.path.join(root, "3D")}')
-
-    assert not os.path.exists(
-        os.path.join(root, "2D")
-    ), f"please delete the {root}/2D folder before proceeding"
-    os.mkdir(os.path.join(root, "2D"))
-    os.mkdir(os.path.join(root, "2D", "train"))
-    os.mkdir(os.path.join(root, "2D", "val"))
-    os.mkdir(os.path.join(root, "2D", "train", "transverse"))
-    os.mkdir(os.path.join(root, "2D", "val", "transverse"))
-    os.mkdir(os.path.join(root, "2D", "train", "coronal"))
-    os.mkdir(os.path.join(root, "2D", "val", "coronal"))
-    os.mkdir(os.path.join(root, "2D", "train", "sagittal"))
-    os.mkdir(os.path.join(root, "2D", "val", "sagittal"))
-
     reader = NIIReader()
-    for g in ["train", "val"]:
-        for x in tqdm(sorted(os.listdir(os.path.join(root, "3D", g)))):
-            image_fname = os.path.join(root, "3D", g, x, f"{x}_SAX.nii.gz")
-            label_fname = os.path.join(root, "3D", g, x, f"{x}_SAX_mask2.nii.gz")
+    base_folder = Path("/media/y4tsu/4B172BDA26AB3054/cmr_folds")
+    folds = [x for x in base_folder.iterdir() if x.is_dir()]
 
-            image = reader.read(image_fname)
-            label = reader.read(label_fname)
+    for fold in folds:
+        data_3d = fold / "3D"
+        data_2d = fold / "2D"
+        data_2d.mkdir(parents=False, exist_ok=True)
 
-            os.mkdir(os.path.join(root, "2D", g, "coronal", x))
-            os.mkdir(os.path.join(root, "2D", g, "sagittal", x))
-            os.mkdir(os.path.join(root, "2D", g, "transverse", x))
+        train_data_2d = data_2d / "train"
+        val_data_2d = data_2d / "val"
+        train_data_2d.mkdir(parents=False, exist_ok=True)
+        val_data_2d.mkdir(parents=False, exist_ok=True)
 
-            for j in range(image.shape[0]):
-                np.save(
-                    os.path.join(root, "2D", g, "coronal", f"{x}/{x}_{j:03}_image"),
-                    image[j, :, :],
-                )
-                np.save(
-                    os.path.join(root, "2D", g, "coronal", f"{x}/{x}_{j:03}_label"),
-                    label[j, :, :],
-                )
-            for j in range(image.shape[1]):
-                np.save(
-                    os.path.join(root, "2D", g, "sagittal", f"{x}/{x}_{j:03}_image"),
-                    image[:, j, :],
-                )
-                np.save(
-                    os.path.join(root, "2D", g, "sagittal", f"{x}/{x}_{j:03}_label"),
-                    label[:, j, :],
-                )
-            for j in range(image.shape[2]):
-                np.save(
-                    os.path.join(root, "2D", g, "transverse", f"{x}/{x}_{j:03}_image"),
-                    image[:, :, j],
-                )
-                np.save(
-                    os.path.join(root, "2D", g, "transverse", f"{x}/{x}_{j:03}_label"),
-                    label[:, :, j],
-                )
+        transverse_train_2d = train_data_2d / "transverse"
+        transverse_val_2d = val_data_2d / "transverse"
+        transverse_train_2d.mkdir(parents=False, exist_ok=True)
+        transverse_val_2d.mkdir(parents=False, exist_ok=True)
+
+        for g in ["train", "val"]:
+            for x in tqdm((data_3d / g).iterdir()):
+                image_fname = x / f"{x.stem}_SAX.nii.gz"
+                label_fname = x / f"{x.stem}_SAX_mask2.nii.gz"
+
+                image = reader.read(image_fname)
+                label = reader.read(label_fname)
+
+                curr_dir = data_2d / g / "transverse" / x.stem
+                curr_dir.mkdir(parents=False, exist_ok=True)
+
+                for j in range(image.shape[2]):
+                    np.save(
+                        str(
+                            data_2d
+                            / g
+                            / "transverse"
+                            / x.stem
+                            / f"{x.stem}_{j:03}_image"
+                        ),
+                        image[:, :, j],
+                    )
+                    np.save(
+                        str(
+                            data_2d
+                            / g
+                            / "transverse"
+                            / x.stem
+                            / f"{x.stem}_{j:03}_label"
+                        ),
+                        label[:, :, j],
+                    )
 
 
-def create_3dshallow_dataset(root, depth=3):
+def create_3dshallow_dataset(depth=5):
     """
     Create 3D shallow images and save with the given depth to allow fast shuffled loading during training.
-
-    :param root: str: path to the data root (one level up from the '3D' folder)
     :param depth: int: slice thickness to create for images
     """
     assert (
         depth > 1 and depth % 2 == 1
     ), f"depth must be an odd number greater than 1 but got {depth}"
-    print(
-        f'Creating depth={depth} 3DShallow dataset from data at {os.path.join(root, "3D")}'
-    )
     reader = NIIReader()
 
-    assert not os.path.exists(
-        os.path.join(root, "3DShallow")
-    ), f"please delete the {root}/3DShallow folder before proceeding"
-    os.mkdir(os.path.join(root, "3DShallow"))
-    os.mkdir(os.path.join(root, "3DShallow", "train"))
-    os.mkdir(os.path.join(root, "3DShallow", "val"))
-    os.mkdir(os.path.join(root, "3DShallow", "train", "transverse"))
-    os.mkdir(os.path.join(root, "3DShallow", "val", "transverse"))
+    base_folder = Path("/media/y4tsu/4B172BDA26AB3054/cmr_folds")
+    folds = [x for x in base_folder.iterdir() if x.is_dir()]
 
-    for g in ["train", "val"]:
-        for x in tqdm(sorted(os.listdir(os.path.join(root, "3D", g)))):
-            image_fname = os.path.join(root, "3D", g, x, f"{x}_SAX.nii.gz")
-            label_fname = os.path.join(root, "3D", g, x, f"{x}_SAX_mask2.nii.gz")
+    for fold in folds:
+        data_3d = fold / "3D"
+        data_3d_shallow = fold / "3DShallow"
+        data_3d_shallow.mkdir(parents=False, exist_ok=True)
 
-            image = reader.read(image_fname)
-            label = reader.read(label_fname)
+        train_data_3d_shallow = data_3d_shallow / "train"
+        val_data_3d_shallow = data_3d_shallow / "val"
+        train_data_3d_shallow.mkdir(parents=False, exist_ok=True)
+        val_data_3d_shallow.mkdir(parents=False, exist_ok=True)
 
-            os.mkdir(os.path.join(root, "3DShallow", g, "transverse", x))
+        transverse_train_2d = train_data_3d_shallow / "transverse"
+        transverse_val_2d = val_data_3d_shallow / "transverse"
+        transverse_train_2d.mkdir(parents=False, exist_ok=True)
+        transverse_val_2d.mkdir(parents=False, exist_ok=True)
 
-            for j in range(image.shape[2] - depth + 1):
-                np.save(
-                    os.path.join(
-                        root, "3DShallow", g, "transverse", f"{x}/{x}_{j:03}_image"
-                    ),
-                    image[:, :, j : j + depth],
-                )
-                np.save(
-                    os.path.join(
-                        root, "3DShallow", g, "transverse", f"{x}/{x}_{j:03}_label"
-                    ),
-                    label[:, :, j : j + depth],
-                )
+        for g in ["train", "val"]:
+            for x in tqdm((data_3d / g).iterdir()):
+                image_fname = x / f"{x.stem}_SAX.nii.gz"
+                label_fname = x / f"{x.stem}_SAX_mask2.nii.gz"
+
+                image = reader.read(image_fname)
+                label = reader.read(label_fname)
+
+                curr_dir = data_3d_shallow / g / "transverse" / x.stem
+                curr_dir.mkdir(parents=False, exist_ok=True)
+
+                for j in range(image.shape[2] - depth + 1):
+                    np.save(
+                        str(
+                            data_3d_shallow
+                            / g
+                            / "transverse"
+                            / x.stem
+                            / f"{x.stem}_{j:03}_image"
+                        ),
+                        image[:, :, j : j + depth],
+                    )
+                    np.save(
+                        str(
+                            data_3d_shallow
+                            / g
+                            / "transverse"
+                            / x.stem
+                            / f"{x.stem}_{j:03}_label"
+                        ),
+                        label[:, :, j : j + depth],
+                    )
 
 
 def find_depth_distributions(root):
@@ -493,7 +614,6 @@ if __name__ == "__main__":
     # analyse_quality_labels_class_wise()
     # analyse_quality_labels_frequency()
     # plot_extra_metrics()
-    find_wilcoxon(
-        "dice_res/3D_frozen_dices_1.csv",
-        "dice_res/3D_frozen_dices_plus_certainty_1.csv",
-    )
+    # rotate_incorrect_orientations()
+    create_3dshallow_dataset(5)
+    pass

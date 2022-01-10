@@ -12,3 +12,4 @@ train_config.json
 /box_test/
 /dice_res/
 /saved_preds/
+/logs/
